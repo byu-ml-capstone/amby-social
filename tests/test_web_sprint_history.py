@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, date, datetime
 from types import SimpleNamespace
 
@@ -164,10 +165,12 @@ def test_history_detail_uses_close_time_ticket_snapshot_and_is_read_only(
     ticket_path = f"/projects/{history_world.project.slug}/tickets/{history_world.rolled_number}"
     ticket_link = f'href="{ticket_path}"'
     assert ticket_link in page.text
-    sprint_action = (
-        f'action="/projects/{history_world.project.slug}/sprints/{history_world.newer_id}/'
+    sprint_actions = re.findall(
+        rf'action="/projects/{history_world.project.slug}/sprints/{history_world.newer_id}/([^"]*)"',
+        page.text,
     )
-    assert sprint_action not in page.text
+    # Only the sprint report stays editable once a sprint has closed.
+    assert set(sprint_actions) == {"report", "report/finalize"}
     assert "Close sprint" not in page.text
     assert "Start sprint" not in page.text
 

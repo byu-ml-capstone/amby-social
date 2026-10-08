@@ -3,9 +3,27 @@ from sqlmodel import Session, select
 
 from app.auth import current_user, project_owner, project_reader, require_member
 from app.db import get_session
-from app.models import Project, ProjectMember, Role, Sprint, SprintTicketHistory, Ticket, User
-from app.schemas import SprintClose, SprintCreate, SprintHistoryOut, SprintOut, SprintUpdate
+from app.models import (
+    Project,
+    ProjectMember,
+    Role,
+    Sprint,
+    SprintReport,
+    SprintTicketHistory,
+    Ticket,
+    User,
+)
+from app.schemas import (
+    SprintClose,
+    SprintCreate,
+    SprintHistoryOut,
+    SprintOut,
+    SprintReportOut,
+    SprintReportUpdate,
+    SprintUpdate,
+)
 from app.services import close_sprint, create_sprint, start_sprint, update_sprint
+from app.sprint_reports import build_payload, finalize_report, get_report, save_report
 
 router = APIRouter(prefix="/api/v1", tags=["sprints"])
 
@@ -116,3 +134,45 @@ def get_sprint_history(
         )
         for history, ticket in rows
     ]
+
+
+@router.get("/sprints/{sprint_id}/report", response_model=SprintReportOut)
+def get_sprint_report(
+    sprint_id: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> SprintReport:
+    return get_report(session, _sprint_access(sprint_id, user, session))
+
+
+@router.get("/sprints/{sprint_id}/report/payload")
+def get_sprint_report_payload(
+    sprint_id: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    sprint = _sprint_access(sprint_id, user, session)
+    get_report(session, sprint)  # 404 until the sprint has closed
+    return build_payload(session, sprint)
+
+
+@router.put("/sprints/{sprint_id}/report", response_model=SprintReportOut)
+def put_sprint_report(
+    sprint_id: str,
+    body: SprintReportUpdate,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> SprintReport:
+    sprint = _sprint_access(sprint_id, user, session)
+    changes = body.model_dump(exclude_unset=True, exclude_none=True, exclude={"generated_by"})
+    return save_report(session, sprint, get_report(session, sprint), changes, body.generated_by)
+
+
+@router.post("/sprints/{sprint_id}/report/finalize", response_model=SprintReportOut)
+def post_finalize_sprint_report(
+    sprint_id: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> SprintReport:
+    sprint = _sprint_access(sprint_id, user, session, owner=True)
+    return finalize_report(session, get_report(session, sprint), user)

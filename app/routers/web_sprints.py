@@ -24,6 +24,7 @@ from app.github_sync import (
 )
 from app.gmail import gmail_is_configured
 from app.models import (
+    REPORT_TEXT_MAX_LENGTH,
     GitHubConnectState,
     GitHubInstallation,
     GmailConnection,
@@ -61,6 +62,7 @@ from app.services import (
     update_project_member,
     update_ticket,
 )
+from app.sprint_reports import REPORT_FIELDS, finalize_report, get_report, save_report
 
 router = APIRouter(tags=["web"])
 _TICKET_IDS_FORM = Form(...)
@@ -249,6 +251,13 @@ def _project_sprint(session: Session, project: Project, sprint_id: str) -> Sprin
         select(Sprint).where(Sprint.id == sprint_id, Sprint.project_id == project.id)
     ).first()
     if sprint is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sprint not found")
+    return sprint
+
+
+def _closed_sprint(session: Session, project: Project, sprint_id: str) -> Sprint:
+    sprint = _project_sprint(session, project, sprint_id)
+    if sprint.status != SprintStatus.CLOSED:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Sprint not found")
     return sprint
 
@@ -911,9 +920,7 @@ def sprint_history_detail(
     session: Session = Depends(get_session),
 ) -> Response:
     project, member = access
-    sprint = _project_sprint(session, project, sprint_id)
-    if sprint.status != SprintStatus.CLOSED:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sprint not found")
+    sprint = _closed_sprint(session, project, sprint_id)
     rows = _history_rows(session, [sprint.id])
     return render(
         request,
@@ -928,8 +935,48 @@ def sprint_history_detail(
             "history": rows,
             "rollover_count": sum(not entry.was_completed for entry, _ in rows),
             "delay_total": _history_delay_total(sprint, rows),
+            "report": get_report(session, sprint),
+            "report_fields": REPORT_FIELDS,
         },
         session=session,
+    )
+
+
+@router.post("/projects/{slug}/sprints/{sprint_id}/report", dependencies=[Depends(verify_csrf)])
+async def save_sprint_report_form(
+    sprint_id: str,
+    request: Request,
+    access: tuple[Project, ProjectMember] = Depends(project_reader),
+    session: Session = Depends(get_session),
+) -> Response:
+    project, _ = access
+    sprint = _closed_sprint(session, project, sprint_id)
+    form = await request.form()
+    changes = {
+        field: str(form[field])[:REPORT_TEXT_MAX_LENGTH]
+        for field, _ in REPORT_FIELDS
+        if field in form
+    }
+    save_report(session, sprint, get_report(session, sprint), changes)
+    return RedirectResponse(
+        f"/projects/{project.slug}/sprints/{sprint.id}", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post(
+    "/projects/{slug}/sprints/{sprint_id}/report/finalize", dependencies=[Depends(verify_csrf)]
+)
+def finalize_sprint_report_form(
+    sprint_id: str,
+    access: tuple[Project, ProjectMember] = Depends(project_owner),
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    project, _ = access
+    sprint = _closed_sprint(session, project, sprint_id)
+    finalize_report(session, get_report(session, sprint), user)
+    return RedirectResponse(
+        f"/projects/{project.slug}/sprints/{sprint.id}", status_code=status.HTTP_303_SEE_OTHER
     )
 
 

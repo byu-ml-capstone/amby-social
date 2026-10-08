@@ -4,12 +4,15 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.models import (
+    REPORT_TEXT_MAX_LENGTH,
     AttachmentSource,
     GitHubArtifactKind,
     GitHubArtifactState,
     GitHubCIState,
     GitHubReviewState,
     Priority,
+    ReportAuthor,
+    ReportGenerationStatus,
     Role,
     SprintStatus,
     TicketStatus,
@@ -281,6 +284,35 @@ class SprintOut(BaseModel):
     committed_points: int | None
     completed_points: int | None
     closed_at: datetime | None
+
+
+ReportText = Field(default=None, max_length=REPORT_TEXT_MAX_LENGTH)
+
+
+class SprintReportUpdate(BaseModel):
+    goal_summary: str | None = ReportText
+    completed_summary: str | None = ReportText
+    blockers_and_rollovers: str | None = ReportText
+    velocity_summary: str | None = ReportText
+    faculty_notes: str | None = ReportText
+    # MCP clients send MCP_CLIENT so the draft is grounding-checked and marked generated.
+    generated_by: Literal[ReportAuthor.MCP_CLIENT, ReportAuthor.HUMAN] = ReportAuthor.HUMAN
+
+
+class SprintReportOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    sprint_id: str
+    goal_summary: str
+    completed_summary: str
+    blockers_and_rollovers: str
+    velocity_summary: str
+    faculty_notes: str
+    generation_status: ReportGenerationStatus
+    generated_by: ReportAuthor | None
+    is_finalized: bool
+    finalized_by: str | None
+    finalized_at: datetime | None
 
 
 class SprintHistoryOut(BaseModel):

@@ -31,6 +31,36 @@
   </section>
   {% endif %}
 
+  <section class="settings-section app-surface sprint-report" aria-labelledby="report-heading">
+    <h2 id="report-heading">Sprint report</h2>
+    {% if report.is_finalized %}
+    <p class="form-status">Finalized {{ report.finalized_at.strftime('%b %-d, %Y') }}</p>
+    {% for field, label in report_fields %}{% if report[field] %}
+    <h3>{{ label }}</h3>
+    <div>{{ report[field]|markdown|safe }}</div>
+    {% endif %}{% endfor %}
+    {% else %}
+    {% if report.generated_by is none %}
+    <p class="form-status">No draft yet. Ask your MCP client (Claude Code or Claude Desktop) to “draft the sprint report for {{ sprint.name }}”. It reads <code>get_sprint_report_payload</code> and saves with <code>save_sprint_report</code>; then review and edit it here.</p>
+    {% else %}
+    <p class="form-status">Draft · {{ 'AI-generated via MCP' if report.generated_by.value == 'MCP_CLIENT' else 'Written by hand' }}</p>
+    {% endif %}
+    <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/report" method="post" class="app-form">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      {% for field, label in report_fields %}
+      <label>{{ label }}<textarea name="{{ field }}" rows="4" maxlength="8000">{{ report[field] }}</textarea></label>
+      {% endfor %}
+      <div class="app-form-actions"><button class="app-primary-button" type="submit">Save draft</button></div>
+    </form>
+    {% if role == 'OWNER' %}
+    <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/report/finalize" method="post" class="app-form-actions">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <button class="app-secondary-button" type="submit">Finalize report</button>
+    </form>
+    {% endif %}
+    {% endif %}
+  </section>
+
   <section class="backlog-list sprint-history-tickets" aria-labelledby="history-tickets-heading">
     <div class="backlog-list-header"><p class="section-eyebrow">Snapshot</p><h2 id="history-tickets-heading">Tickets at close</h2></div>
     {% for entry, ticket in history %}
