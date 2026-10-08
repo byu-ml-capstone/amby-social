@@ -532,3 +532,32 @@ def test_attachment_migration_round_trip(tmp_path):
     }
     subprocess.run(["uv", "run", "alembic", "downgrade", "a3f7c9e2b815"], check=True, env=env)
     assert "ticket_attachment" not in inspect(make_engine(f"sqlite:///{db}")).get_table_names()
+
+
+def test_sprint_report_migration_backfills_closed_sprints_and_round_trips(tmp_path):
+    db = tmp_path / "reports.db"
+    env = {"DATABASE_URL": f"sqlite:///{db}", "PATH": os.environ["PATH"]}
+    subprocess.run(["uv", "run", "alembic", "upgrade", "b7e2d4f1a9c3"], check=True, env=env)
+    with make_engine(f"sqlite:///{db}").begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO project (id,name,slug,key,next_ticket_number,created_at) "
+                "VALUES ('p','Project','project','PRJ',1,'2026-01-01')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO sprint (id,project_id,name,goal,status,start_date,end_date) VALUES "
+                "('closed','p','S1','g','CLOSED','2026-01-01','2026-01-08'),"
+                "('open','p','S2','g','ACTIVE','2026-01-09','2026-01-16')"
+            )
+        )
+
+    subprocess.run(["uv", "run", "alembic", "upgrade", "e5c1a7d3b902"], check=True, env=env)
+    with make_engine(f"sqlite:///{db}").connect() as connection:
+        assert connection.execute(
+            text("SELECT sprint_id, generation_status, is_finalized FROM sprint_report")
+        ).all() == [("closed", "PENDING", 0)]
+
+    subprocess.run(["uv", "run", "alembic", "downgrade", "b7e2d4f1a9c3"], check=True, env=env)
+    assert "sprint_report" not in inspect(make_engine(f"sqlite:///{db}")).get_table_names()

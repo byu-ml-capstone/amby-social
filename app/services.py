@@ -27,6 +27,7 @@ from app.models import (
     ProjectMember,
     Role,
     Sprint,
+    SprintReport,
     SprintStatus,
     SprintTicketHistory,
     Ticket,
@@ -408,6 +409,7 @@ def delete_project(session: Session, project: Project, confirm: str) -> None:
     session.execute(
         delete(SprintTicketHistory).where(SprintTicketHistory.sprint_id.in_(sprint_ids))
     )
+    session.execute(delete(SprintReport).where(SprintReport.sprint_id.in_(sprint_ids)))
     ticket_ids = select(Ticket.id).where(Ticket.project_id == project.id)
     session.execute(delete(TicketAttachment).where(TicketAttachment.project_id == project.id))
     session.execute(delete(TicketComment).where(TicketComment.ticket_id.in_(ticket_ids)))
@@ -576,6 +578,8 @@ def close_sprint(
                 else None
             )
 
+        # Empty draft for the AI report; close runs once, so exactly one report per sprint.
+        session.add(SprintReport(sprint_id=sprint.id))
         sprint.completed_points = completed_points
         sprint.goal_achieved = goal_achieved
         sprint.review_notes = review_notes.strip() if review_notes else None

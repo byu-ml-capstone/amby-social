@@ -255,6 +255,41 @@ class SprintTicketHistory(SQLModel, table=True):
     recorded_at: datetime = Field(default_factory=utcnow)
 
 
+class ReportGenerationStatus(StrEnum):
+    PENDING = "PENDING"
+    OK = "OK"
+    FAILED = "FAILED"
+
+
+class ReportAuthor(StrEnum):
+    SERVER = "SERVER"
+    MCP_CLIENT = "MCP_CLIENT"
+    HUMAN = "HUMAN"
+
+
+REPORT_TEXT_MAX_LENGTH = 8000
+
+
+class SprintReport(SQLModel, table=True):
+    """AI-drafted retrospective; created empty when its sprint closes (one per sprint)."""
+
+    __tablename__ = "sprint_report"
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    sprint_id: str = Field(foreign_key="sprint.id", unique=True, index=True)
+    goal_summary: str = Field(default="", max_length=REPORT_TEXT_MAX_LENGTH)
+    completed_summary: str = Field(default="", max_length=REPORT_TEXT_MAX_LENGTH)
+    blockers_and_rollovers: str = Field(default="", max_length=REPORT_TEXT_MAX_LENGTH)
+    velocity_summary: str = Field(default="", max_length=REPORT_TEXT_MAX_LENGTH)
+    faculty_notes: str = Field(default="", max_length=REPORT_TEXT_MAX_LENGTH)
+    generation_status: ReportGenerationStatus = Field(default=ReportGenerationStatus.PENDING)
+    generated_by: ReportAuthor | None = None
+    is_finalized: bool = False
+    finalized_by: str | None = Field(default=None, foreign_key="user.id")
+    finalized_at: datetime | None = None
+    created_at: datetime = Field(default_factory=utcnow)
+
+
 class GitHubInstallation(SQLModel, table=True):
     __tablename__ = "github_installation"
 
