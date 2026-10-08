@@ -1,25 +1,9 @@
-# Local development overrides. Docker Compose auto-merges this file when you
-# run `docker compose up` from the repo root (no `-f` flag). Coolify uses
-# `-f docker-compose.yaml` explicitly, so nothing here reaches production.
-#
-# Purpose:
-#   1. Expose the `hello` service on host port 8000 so your browser / curl
-#      on your laptop can reach it. In production, Traefik handles domain
-#      routing and no host-port binding is needed (or desired — see the
-#      ports vs expose note in docker-compose.yaml).
-#   2. Enable the destructive /admin/reset endpoint so you can wipe the
-#      notes table during local dev without needing to set env vars by
-#      hand. In production it's off by default; students enable it in
-#      Coolify's Environment Variables UI when they need to reset, then
-#      remove the env var afterward.
-#
-# `smoke-test.sh` also exports SERVICE_FQDN_HELLO before running compose
-# so the interpolation of ${SERVICE_FQDN_HELLO} in the main file doesn't
-# warn.
-
+# Local development only. `docker compose up` auto-merges this file; Coolify runs
+# with `-f docker-compose.yaml`, so nothing here reaches staging or production.
 services:
-  hello:
+  web:
     ports:
       - "8000:8000"
     environment:
-      - ALLOW_ADMIN_RESET=true
+      ALLOWED_HOSTS: '["127.0.0.1","localhost"]'
+      ALLOWED_ORIGINS: '["http://localhost:8000"]'

@@ -21,16 +21,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-python@v5.4.0
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.12"
-          cache: pip
+          enable-cache: true
 
       - name: Install dependencies
-        run: pip install -r hello/requirements.txt httpx pytest
+        run: uv sync --frozen
 
       - name: Unit tests
-        run: cd hello && pytest tests/ -v
+        run: uv run pytest -q
 
   # Push to staging → fires Coolify staging webhook after tests pass.
   deploy-staging:

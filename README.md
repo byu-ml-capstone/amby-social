@@ -13,8 +13,7 @@ the MCP server are **not** part of this slice — see "Out of scope" below.
 ## Run locally (Docker)
 
 ```bash
-cp .env.example .env          # then edit SESSION_SECRET, see below
-docker compose up --build
+./smoke-test.sh               # builds, starts, and checks the stack
 ```
 
 Open <http://localhost:8000> in a browser. Register an account, create a
@@ -37,9 +36,8 @@ sprint pages and work with tickets, but cannot run sprint lifecycle actions.
 On small screens, the project sidebar becomes a menu drawer. Board columns
 remain full-width and scroll horizontally instead of being compressed.
 
-The SQLite database file lives at `./data/kanbanflow.db` on the host, bind-mounted
-into the container at `/data`. Rebuilding or recreating the container does not
-delete this directory, so data survives `docker compose up --build`.
+The SQLite database and attachments live on the `kanban-data` named volume,
+mounted at `/data`. They survive rebuilds; only `docker compose down -v` deletes them.
 
 ### Generate a real `SESSION_SECRET`
 
@@ -67,46 +65,22 @@ writer at a time; a second worker process reintroduces `database is locked`
 errors under concurrent writes. Do not raise the worker count to improve
 throughput — it will not, and it will break writes instead.
 
-## Deploy on one EC2 instance
+## Deploy on Coolify (class cluster)
 
-The production layout is one Dockerized application bound to
-`127.0.0.1:8000`, with host Nginx as the only public entry point. Open ports
-80/443 in the EC2 security group; restrict SSH to your IP or use AWS SSM.
+`docker-compose.yaml` defines one public service, `web`, with SQLite and
+attachments on the `kanban-data` named volume. Push to `staging` (or merge to
+`main`): CI runs the tests, then fires the Coolify deploy webhook.
 
-1. Point the domain's DNS A record at the EC2 Elastic IP.
-2. Copy `.env.example` to `.env` and set the production values shown above.
-3. Start the application with `docker compose up -d --build`.
-4. Replace `kanban.example.com` in `deploy/nginx/kanbanflow.conf`, then install
-   it as `/etc/nginx/sites-available/kanbanflow` and enable the site.
-5. Run `sudo nginx -t && sudo systemctl reload nginx`.
-6. Install Certbot and run:
+Per Coolify Application (staging and production):
 
-```bash
-sudo certbot --nginx --redirect -d kanban.example.com
-```
+1. Set `APP_HOST` and `SESSION_SECRET` in Environment Variables. The full list,
+   including the optional GitHub App values, is in `.env.example`.
+2. Domains: attach `http://<APP_HOST>` to the **`web`** service, then redeploy.
+3. Verify with `./smoke-test.sh http://<APP_HOST>`.
 
-Certbot adds the HTTPS listener and HTTP-to-HTTPS redirect, and installs its
-renewal timer. Verify renewal once with `sudo certbot renew --dry-run`.
-
-The Nginx configuration overwrites forwarded-client headers and applies an
-edge rate limit to authentication requests. Port 8000 is loopback-only, so the
-application can safely trust the Nginx forwarded address for its own rate
-limiter.
-
-### Automatic deployment from `main`
-
-The `Deploy to EC2` GitHub Actions workflow fast-forward pulls `main`, rebuilds
-the container, runs migrations through the container startup command, and
-waits for `/health`. Prepare `/srv/kanbanflow` on EC2 as a clone that can read
-the repository, then add these secrets to the GitHub `production` environment:
-
-- `EC2_HOST` — the EC2 domain or Elastic IP
-- `EC2_USER` — the SSH user
-- `EC2_SSH_KEY` — its private Ed25519 key
-- `EC2_HOST_KEY` — the pinned `known_hosts` line from a trusted first setup
-
-Protect the `production` environment if deployments require manual approval.
-The workflow also supports a manual `workflow_dispatch` run.
+The class domains are http-only and VPN-only, so the app runs with
+`ENVIRONMENT=development` and `SECURE_COOKIES=false`. Gmail intake and inbound
+GitHub webhooks do not work there; everything else does.
 
 ## Develop (without Docker)
 
@@ -171,8 +145,8 @@ brings its real attachments along (not inline signature images).
   description instead of imported.
 - Images over 2000 px on the long edge are downscaled on arrival and their EXIF (including GPS)
   is removed; the original is not kept. GIFs and animated images are stored as-is.
-- Files are stored under `ATTACHMENTS_DIR` (`/data/attachments` in Docker), so back up `./data`
-  as a whole. Nginx allows 25 MB request bodies for multi-file uploads.
+- Files are stored under `ATTACHMENTS_DIR` (`/data/attachments` in Docker), so back up the `kanban-data` volume
+  as a whole.
 - MCP: `get_ticket` lists attachments; `get_attachment` returns an image resized to 1568 px.
 
 ## Sprint API
