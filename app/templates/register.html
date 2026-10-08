@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Create account - Kanban Flow{% endblock %}
+{% block content %}
+<div class="auth-page">
+<section class="auth-card app-surface" aria-labelledby="register-heading">
+  <p class="section-eyebrow">Kanban Flow</p>
+  <h1 id="register-heading" class="app-page-title">Create account</h1>
+  {% if error %}<p id="form-error" role="alert" class="form-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/register" class="app-form">
+    <div>
+      <label for="register-name">Name</label>
+      <input
+        id="register-name"
+        class="app-input"
+        type="text"
+        name="name"
+        required
+      >
+    </div>
+    <div>
+      <label for="register-email">Email</label>
+      <input
+        id="register-email"
+        class="app-input"
+        type="email"
+        name="email"
+        required
+        {% if error %}aria-describedby="form-error" aria-invalid="true"{% endif %}
+      >
+    </div>
+    <div>
+      <label for="register-password">Password</label>
+      <input
+        id="register-password"
+        class="app-input"
+        type="password"
+        name="password"
+        required
+        {% if error %}aria-describedby="form-error" aria-invalid="true"{% endif %}
+      >
+    </div>
+    <button class="app-primary-button auth-submit">Create account</button>
+  </form>
+  <p class="auth-prompt">Already have an account? <a href="/login">Sign in</a></p>
+</section>
+</div>
+{% endblock %}

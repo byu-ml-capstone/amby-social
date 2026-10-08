@@ -1,7 +1,15 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+.ruff_cache/
 .venv/
 venv/
 .env
+.env.*
+!.env.example
+!.env.mcp.example
+*.db
+*.db-wal
+*.db-shm
 .DS_Store
+/data/

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}Settings · Kanban Flow{% endblock %}
+{% block content %}
+<div class="app-page user-settings">
+  <header class="app-page-header"><div><p class="section-eyebrow">Account</p><h1 class="app-page-title">Settings</h1></div></header>
+
+  {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+  {% if profile_saved %}<p class="form-status" role="status">Personal information updated.</p>{% endif %}
+  {% if password_saved %}<p class="form-status" role="status">Password updated.</p>{% endif %}
+
+  <section class="settings-section app-surface" aria-labelledby="personal-heading">
+    <h2 id="personal-heading">Personal information</h2>
+    <form class="app-form" method="post" action="/settings/profile">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label>Name<input name="name" value="{{ user.name }}" maxlength="50" required autocomplete="name"></label>
+      <label>Email<input name="email" type="email" value="{{ user.email }}" maxlength="255" required autocomplete="email"></label>
+      <div class="app-form-actions"><button class="app-primary-button" type="submit">Save changes</button></div>
+    </form>
+  </section>
+
+  <section class="settings-section app-surface" aria-labelledby="password-heading">
+    <h2 id="password-heading">Password</h2>
+    <form class="app-form" method="post" action="/settings/password">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label>Current password<input name="current_password" type="password" required autocomplete="current-password"></label>
+      <label>New password<input name="new_password" type="password" minlength="8" maxlength="72" required autocomplete="new-password"></label>
+      <label>Confirm new password<input name="confirm_password" type="password" minlength="8" maxlength="72" required autocomplete="new-password"></label>
+      <div class="app-form-actions"><button class="app-primary-button" type="submit">Change password</button></div>
+    </form>
+  </section>
+
+  <section class="settings-section app-surface" aria-labelledby="tokens-heading">
+    <h2 id="tokens-heading">API tokens</h2>
+    <p class="settings-description">Use a personal token to connect Kanban Flow to an MCP client.</p>
+    {% if issued_token %}
+      <div class="issued-token" role="status"><strong>Copy this token now. It will not be shown again.</strong><code data-testid="issued-token">{{ issued_token }}</code></div>
+      {% set claude_command -%}
+claude mcp add --transport http --scope user kanbanflow {{ base_url }}/mcp \
+  --header "Authorization: Bearer {{ issued_token }}"
+      {%- endset %}
+      {% set codex_command -%}
+export KANBANFLOW_API_TOKEN={{ issued_token }}
+codex mcp add kanbanflow --url {{ base_url }}/mcp --bearer-token-env-var KANBANFLOW_API_TOKEN
+      {%- endset %}
+      {% set cursor_config -%}
+{
+  "mcpServers": {
+    "kanbanflow": {
+      "url": "{{ base_url }}/mcp",
+      "headers": {
+        "Authorization": "Bearer {{ issued_token }}"
+      }
+    }
+  }
+}
+      {%- endset %}
+      <div class="mcp-setup" aria-labelledby="mcp-setup-heading">
+        <h3 id="mcp-setup-heading">Connect your MCP client</h3>
+        <p>Kanban Flow serves MCP at <code>{{ base_url }}/mcp</code>. Nothing to install; the token's scope decides whether write tools work.</p>
+        <details open>
+          <summary>Claude Code</summary>
+          <p>Run this command in a terminal:</p>
+          <pre><code>{{ claude_command }}</code></pre>
+          <div class="mcp-copy"><button type="button" class="app-secondary-button" data-copy-text="{{ claude_command }}">Copy command</button><span class="ticket-copy-status" role="status" aria-live="polite"></span></div>
+        </details>
+        <details>
+          <summary>Codex</summary>
+          <p>Run these commands in a terminal. Keep <code>KANBANFLOW_API_TOKEN</code> exported in your shell profile.</p>
+          <pre><code>{{ codex_command }}</code></pre>
+          <div class="mcp-copy"><button type="button" class="app-secondary-button" data-copy-text="{{ codex_command }}">Copy command</button><span class="ticket-copy-status" role="status" aria-live="polite"></span></div>
+        </details>
+        <details>
+          <summary>Cursor</summary>
+          <p>Add this server to <code>~/.cursor/mcp.json</code>:</p>
+          <pre><code>{{ cursor_config }}</code></pre>
+          <div class="mcp-copy"><button type="button" class="app-secondary-button" data-copy-text="{{ cursor_config }}">Copy configuration</button><span class="ticket-copy-status" role="status" aria-live="polite"></span></div>
+        </details>
+        <p class="mcp-secret-warning">This configuration contains your token. Keep it out of version control.</p>
+      </div>
+    {% endif %}
+    <form class="app-form" method="post" action="/settings/tokens">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label>Token name<input name="label" maxlength="100" placeholder="Local MCP" required></label>
+      <label>Scope<select name="scope"><option value="read">Read only</option><option value="write">Read and write</option></select></label>
+      <div class="app-form-actions"><button class="app-primary-button" type="submit">Create token</button></div>
+    </form>
+    {% if tokens %}
+      <ul class="settings-token-list">
+        {% for token in tokens %}
+          <li class="settings-token">
+          <div class="settings-token-details"><strong>{{ token.label }}</strong><span><code>{{ token.prefix }}…</code> · {{ token.scope }} · expires {{ token.expires_at.date() }} · {% if token.revoked_at %}Revoked{% else %}Active{% endif %}</span></div>
+            {% if not token.revoked_at %}
+              <form method="post" action="/settings/tokens/{{ token.id }}/revoke">
+                <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+                <button class="app-secondary-button" type="submit">Revoke</button>
+              </form>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="app-empty-state">No API tokens yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="settings-section settings-danger-zone app-surface" aria-labelledby="delete-heading">
+    <h2 id="delete-heading">Delete account</h2>
+    <p class="settings-description">Your personal information and access will be removed. Projects where you are the only owner must be transferred or deleted first.</p>
+    <form class="app-form" method="post" action="/settings/delete">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label>Current password<input name="current_password" type="password" required autocomplete="current-password"></label>
+      <div class="app-form-actions"><button class="app-danger-button" type="submit">Delete account</button></div>
+    </form>
+  </section>
+</div>
+{% endblock %}

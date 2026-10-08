@@ -1,0 +1,37 @@
+<section id="ticket-attachments" class="ticket-attachments" aria-labelledby="ticket-attachments-heading"
+         data-ticket-attachments
+         data-upload-url="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/attachments"
+         data-csrf="{{ csrf_token }}" data-max-bytes="{{ attachment_max_bytes }}">
+  <div class="ticket-description-header">
+    <span id="ticket-attachments-heading" class="ticket-description-label">Attachments</span>
+    <button type="button" class="app-ghost-button" data-attachment-pick>Add files</button>
+    <input type="file" multiple hidden data-attachment-input aria-label="Add files">
+  </div>
+  {% if attachment_error %}<p class="form-error" role="alert">{{ attachment_error }}</p>{% endif %}
+  <p class="ticket-attachments-status" role="status" aria-live="polite" data-attachment-status></p>
+  {% if attachment_images %}
+  <ul class="ticket-attachment-grid" role="list">
+    {% for item in attachment_images %}
+    <li class="ticket-attachment-tile">
+      <a href="{{ item.url }}" target="_blank" rel="noopener" title="{{ item.attachment.filename }}">
+        <img src="{{ item.url }}" alt="{{ item.attachment.filename }}" loading="lazy" width="96" height="96">
+      </a>
+      {% if item.attachment.source.value == 'GMAIL' %}<span class="ticket-attachment-source">Gmail</span>{% endif %}
+      {% if item.can_delete %}<button type="button" class="ticket-attachment-delete" data-attachment-delete="{{ item.delete_url }}" aria-label="Delete {{ item.attachment.filename }}" title="Delete">×</button>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if attachment_files %}
+  <ul class="ticket-attachment-files" role="list">
+    {% for item in attachment_files %}
+    <li class="ticket-attachment-file">
+      <a href="{{ item.url }}" download>{{ item.attachment.filename }}</a>
+      <span class="ticket-attachment-meta">{{ item.attachment.size_bytes|filesizeformat }}{% if item.attachment.source.value == 'GMAIL' %} · from Gmail{% endif %}</span>
+      {% if item.can_delete %}<button type="button" class="ticket-attachment-delete" data-attachment-delete="{{ item.delete_url }}" aria-label="Delete {{ item.attachment.filename }}" title="Delete">×</button>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if not attachment_images and not attachment_files %}<p class="ticket-attachments-empty">Drop files here or paste a screenshot.</p>{% endif %}
+</section>

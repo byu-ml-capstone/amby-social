@@ -1,0 +1,47 @@
+<dialog id="ticket-modal" x-ref="ticketModal" class="app-dialog"
+        role="dialog" aria-modal="true" aria-labelledby="ticket-modal-heading"
+        @cancel="$event.preventDefault(); $el.close()" @close="$refs.ticketModalOpener.focus()"
+        @click="$event.target === $el && $el.close()">
+    <header class="app-dialog-header"><h2 id="ticket-modal-heading">New ticket</h2></header>
+    <form hx-post="/projects/{{ project.slug }}/tickets"
+          hx-swap="none"
+          @htmx:after-request.camel="if ($event.detail.xhr.status >= 200 && $event.detail.xhr.status < 300) { $refs.ticketModal.close(); ticketError = ''; $el.reset(); } else { ticketError = $event.detail.xhr.responseText; }"
+          class="app-form">
+      <p x-show="ticketError" x-text="ticketError" class="form-error" role="alert"></p>
+    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <div>
+        <label for="ticket-sprint">Destination</label>
+        <select id="ticket-sprint" name="sprint_id">
+          {% for destination in destination_sprints|default([]) %}
+          <option value="{{ destination.id }}"{% if sprint and destination.id == sprint.id %} selected{% endif %}>{{ destination.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div>
+        <label for="ticket-title">Title</label>
+        <input id="ticket-title" x-ref="ticketTitle" name="title" required>
+      </div>
+      <div>
+        <label for="ticket-due-date">Due date</label>
+        <input id="ticket-due-date" type="date" name="due_date">
+      </div>
+      <div>
+        <label for="ticket-type">Type</label>
+        <select id="ticket-type" name="type" required>
+          <option value="STORY">Story</option>
+          <option value="BUG">Bug</option>
+          <option value="DEMO_REQUEST">Demo request</option>
+          <option value="TASK" selected>Task</option>
+        </select>
+      </div>
+      <div>
+        <label for="ticket-description">Description</label>
+        <textarea id="ticket-description" name="description" rows="4"
+                  placeholder="Markdown supported"></textarea>
+      </div>
+      <div class="app-form-actions">
+        <button type="button" class="app-ghost-button" @click="$refs.ticketModal.close()">Cancel</button>
+        <button class="app-primary-button">Create</button>
+      </div>
+    </form>
+</dialog>

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="project-board sketch-board" data-board-csrf="{{ csrf_token }}" x-data="{ ticketError: '', ticketOpener: null }" @ticket-drawer-closed.window="$nextTick(() => document.getElementById(`ticket-${ticketOpener}`)?.querySelector('button')?.focus())">
+  <header class="project-header">
+    <div>
+      <h1 class="project-title">{{ project.name }}</h1>
+      <p class="sprint-title">{{ sprint.name }} <span class="sprint-status">{{ sprint.status.value|capitalize }}</span></p>
+      <p class="sprint-meta">{{ sprint.start_date.strftime('%b %-d') }} – {{ sprint.end_date.strftime('%b %-d, %Y') }}{% if sprint.goal %} · {{ sprint.goal }}{% endif %}</p>
+      {% include "partials/sprint_selector.html" %}
+    </div>
+    <div class="project-actions">
+      <button class="app-primary-button" type="button" x-ref="ticketModalOpener" @click="$refs.ticketModal.showModal(); $nextTick(() => $refs.ticketTitle.focus())">New ticket</button>
+      {% if role == 'OWNER' %}
+      <a class="app-secondary-button" data-testid="owner-sprint-actions" href="/projects/{{ project.slug }}/backlog">Plan sprint</a>
+      {% if sprint.status.value == 'ACTIVE' %}
+      <button class="app-secondary-button" type="button" x-ref="closeFormOpener" hx-get="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/close" hx-target="#sprint-dialog-root" hx-swap="innerHTML">Close sprint</button>
+      {% endif %}
+      {% endif %}
+    </div>
+  </header>
+
+  {% include "partials/project_nav.html" %}
+
+  {% if sprint_summary %}
+  <dl class="sprint-summary" data-testid="sprint-summary">
+    <div><dt>Completed</dt><dd>{{ sprint_summary.completed_count }} / {{ sprint_summary.total_count }} · {{ sprint_summary.completion_percent }}%</dd></div>
+    <div><dt>Points</dt><dd>{{ sprint_summary.completed_points }} / {{ sprint_summary.total_points }}</dd></div>
+    <div><dt>Rollover</dt><dd>{{ sprint_summary.rollover_count }}</dd></div>
+    <div><dt>At risk</dt><dd>{{ sprint_summary.at_risk_count }}</dd></div>
+  </dl>
+  {% endif %}
+
+  <form class="board-filters" method="get" aria-label="Board filters">
+    <div class="board-filter-controls">
+      <label class="board-filter-check"><input type="checkbox" name="mine" value="1"{% if mine %} checked{% endif %}> My tickets</label>
+      <label for="assignee-filter">Assignee</label>
+      <select id="assignee-filter" name="assignee_id">
+        <option value="">Anyone</option>
+        {% for member_user in members %}
+        <option value="{{ member_user.id }}"{% if assignee_id == member_user.id %} selected{% endif %}>{{ member_user.name }}</option>
+        {% endfor %}
+      </select>
+      <label for="type-filter">Type</label>
+      <select id="type-filter" name="type">
+        <option value="">All types</option>
+        {% for ticket_type in ticket_types %}
+        <option value="{{ ticket_type.value }}"{% if type_filter == ticket_type %} selected{% endif %}>{{ ticket_type.value|replace('_', ' ')|capitalize }}</option>
+        {% endfor %}
+      </select>
+      <label for="priority-filter">Priority</label>
+      <select id="priority-filter" name="priority">
+        <option value="">All priorities</option>
+        {% for ticket_priority in priorities %}
+        <option value="{{ ticket_priority.value }}"{% if priority_filter == ticket_priority %} selected{% endif %}>{{ ticket_priority.value|capitalize }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <button class="app-secondary-button" type="submit">Filter</button>
+    {% if mine or assignee_id or type_filter or priority_filter %}
+    <p class="board-filter-summary">Filters active</p>
+    <a class="app-ghost-button" href="/projects/{{ project.slug }}">Clear filters</a>
+    {% endif %}
+</form>
+
+<p class="board-drag-status" data-board-drag-status role="status" aria-live="polite" hidden></p>
+
+<div class="board-workspace">
+    <div class="board-scroll" role="region" aria-label="Board columns" tabindex="0">
+      <div class="board-columns">
+      {% for column in columns %}
+      <section class="board-column" aria-labelledby="column-{{ column.value }}-heading">
+        <h2 id="column-{{ column.value }}-heading">
+          {{ column.value|replace('_', ' ')|capitalize }}
+          <span data-testid="column-count-{{ column.value }}">{{ tickets_by_status[column.value]|length }}{% if column.value in truncated_columns %}+{% endif %}</span>
+        </h2>
+        <div id="column-{{ column.value }}" data-drop-status="{{ column.value }}">
+          {% for ticket in tickets_by_status[column.value] %}
+            {% include "partials/ticket_card.html" %}
+          {% else %}
+          <p class="board-empty-state" data-testid="empty-lane-{{ column.value }}">No tickets here.</p>
+          {% endfor %}
+          {% if column.value in truncated_columns %}
+          <p class="board-truncated">Showing the first 200 tickets.</p>
+          {% endif %}
+        </div>
+      </section>
+      {% endfor %}
+      </div>
+    </div>
+    <div id="ticket-detail-root" class="ticket-detail-root" aria-live="polite" @htmx:before-swap.camel="if ($event.detail.xhr.status === 422 && ($event.detail.xhr.getResponseHeader('Content-Type') || '').startsWith('text/html')) { $event.detail.shouldSwap = true; $event.detail.isError = false; $event.detail.target = $el; $event.detail.swapOverride = 'innerHTML' }"></div>
+  </div>
+
+  {% include "partials/ticket_modal.html" %}
+  <div id="sprint-dialog-root" @htmx:before-swap.camel="if ($event.detail.xhr.status === 409 || $event.detail.xhr.status === 422) { $event.detail.shouldSwap = true; $event.detail.isError = false; $event.detail.target = $el; $event.detail.swapOverride = 'innerHTML' }"></div>
+</div>
+{% endblock %}

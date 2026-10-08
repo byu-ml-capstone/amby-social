@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}#{{ ticket.ticket_number }} · {{ project.name }} · Kanban Flow{% endblock %}
+{% block content %}
+<div class="project-board" x-data>
+  <header class="project-header">
+    <div>
+      <h1 class="project-title">{{ project.name }}</h1>
+      <p class="sprint-meta">Ticket #{{ ticket.ticket_number }}</p>
+      {% include "partials/sprint_selector.html" %}
+    </div>
+  </header>
+  {% include "partials/project_nav.html" %}
+  <div id="ticket-detail-root" @htmx:before-swap.camel="if ($event.detail.xhr.status === 422 && ($event.detail.xhr.getResponseHeader('Content-Type') || '').startsWith('text/html')) { $event.detail.shouldSwap = true; $event.detail.isError = false; $event.detail.target = $el; $event.detail.swapOverride = 'innerHTML' }">
+    {% include "partials/ticket_detail.html" %}
+  </div>
+</div>
+{% endblock %}

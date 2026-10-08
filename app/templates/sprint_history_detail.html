@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}{{ sprint.name }} · {{ project.name }} · Kanban Flow{% endblock %}
+
+{% block content %}
+<div class="project-board">
+  <header class="project-header">
+    <div>
+      <p class="section-eyebrow">Closed sprint</p>
+      <h1 class="project-title">{{ sprint.name }}</h1>
+      {% include "partials/sprint_selector.html" %}
+      <p class="sprint-meta">{{ sprint.start_date.strftime('%b %-d') }} – {{ sprint.end_date.strftime('%b %-d, %Y') }}{% if sprint.goal %} · {{ sprint.goal }}{% endif %}</p>
+    </div>
+  </header>
+
+  {% include "partials/project_nav.html" %}
+
+  <section class="sprint-history-detail app-surface" aria-label="{{ sprint.name }} delivery metrics">
+    <dl class="sprint-history-metrics">
+      <div><dt>Committed</dt><dd>{{ sprint.committed_points or 0 }} pts</dd></div>
+      <div><dt>Completed</dt><dd>{{ sprint.completed_points or 0 }} pts</dd></div>
+      <div><dt>Rollover</dt><dd>{{ rollover_count }}</dd></div>
+      <div><dt>Delayed</dt><dd>{{ delay_total }} days</dd></div>
+    </dl>
+  </section>
+  {% if sprint.goal_achieved is not none or sprint.review_notes %}
+  <section class="settings-section app-surface" aria-labelledby="review-heading">
+    <h2 id="review-heading">Sprint review</h2>
+    {% if sprint.goal_achieved is not none %}<p><strong>Goal achieved:</strong> {{ 'Yes' if sprint.goal_achieved else 'No' }}</p>{% endif %}
+    {% if sprint.review_notes %}<div>{{ sprint.review_notes|markdown|safe }}</div>{% endif %}
+  </section>
+  {% endif %}
+
+  <section class="backlog-list sprint-history-tickets" aria-labelledby="history-tickets-heading">
+    <div class="backlog-list-header"><p class="section-eyebrow">Snapshot</p><h2 id="history-tickets-heading">Tickets at close</h2></div>
+    {% for entry, ticket in history %}
+    <article class="backlog-ticket">
+      <a class="app-row-link" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}">#{{ ticket.ticket_number }} {{ ticket.title }}</a>
+      <p class="sprint-meta">{{ entry.status_at_close.value|replace('_', ' ')|capitalize }} · {{ entry.story_points_at_close or 0 }} pts at close · {% if entry.was_completed %}Completed{% else %}Rollover{% endif %}</p>
+    </article>
+    {% else %}
+    <p class="app-empty-state">No tickets at close.</p>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

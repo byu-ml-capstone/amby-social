@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Kanban Flow{% endblock %}</title>
+  <link rel="preload" href="/static/fonts/Kalam-Bold.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/PatrickHand-Regular.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version['app.css'] }}">
+  <script src="/static/app.js?v={{ asset_version['app.js'] }}" defer></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12/dist/htmx.min.js" integrity="sha384-ujb1lZYygJmzgSwoxRggbCHcjc0rB2XoQrxeTUQyRjrOnlCoYta87iKBWq3EsdM2" crossorigin="anonymous" defer></script>
+  <script src="https://unpkg.com/alpinejs@3.14.1/dist/cdn.min.js" integrity="sha384-l8f0VcPi/M1iHPv8egOnY/15TDwqgbOR1anMIJWvU6nLRgZVLTLSaNqi/TOoT5Fh" crossorigin="anonymous" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+  {% if user %}
+    <div class="app-shell" x-data="{ navOpen: false, isMobile: window.matchMedia('(max-width: 767px)').matches, navOpener: null, closeNav() { this.navOpen = false; this.$nextTick(() => this.navOpener?.focus()) }, trapNav(event) { const focusable = [...this.$refs.mobileNav.querySelectorAll('a, button, input, select, textarea, [tabindex]:not([tabindex=-1])')].filter(element => !element.disabled); const first = focusable[0]; const last = focusable.at(-1); if (!first || !last) return; if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); } else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); } } }"
+         x-init="window.matchMedia('(max-width: 767px)').addEventListener('change', event => { isMobile = event.matches; if (!event.matches) navOpen = false })">
+        <header class="app-mobile-header" :inert="isMobile && navOpen">
+        <button class="app-menu-button" type="button" aria-controls="app-sidebar"
+                :aria-expanded="navOpen.toString()" @click="navOpener = $el; navOpen = !navOpen; if (navOpen) $nextTick(() => $refs.mobileNav.querySelector('a, button')?.focus()); else $nextTick(() => navOpener?.focus())">
+          <span class="sr-only">Toggle navigation</span>☰
+        </button>
+        <a href="/dashboard" class="app-brand">Kanban Flow</a>
+      </header>
+        <div class="app-drawer-backdrop" x-cloak x-show="navOpen && isMobile" @click="closeNav()" aria-hidden="true"></div>
+        <aside id="app-sidebar" x-ref="mobileNav" data-testid="app-sidebar" class="app-sidebar" :class="{ 'is-open': navOpen }"
+             :inert="isMobile && !navOpen" :aria-hidden="(isMobile && !navOpen).toString()"
+               :role="isMobile ? 'dialog' : null" :aria-modal="isMobile ? 'true' : null" @keydown.escape.window="if (isMobile && navOpen) closeNav()" @keydown.tab="if (isMobile && navOpen) trapNav($event)">
+        <a href="/dashboard" class="app-brand">Kanban Flow</a>
+        <nav aria-label="Projects" class="app-project-nav">
+          <a href="/dashboard" class="app-projects-link">Projects</a>
+          {% for sidebar_project in projects %}
+            <a href="/projects/{{ sidebar_project.slug }}" class="app-project-link{% if project and project.id == sidebar_project.id %} is-active{% endif %}"{% if project and project.id == sidebar_project.id %} aria-current="page"{% endif %}>{{ sidebar_project.name }}</a>
+          {% endfor %}
+        </nav>
+      <div class="app-user-menu">
+        <span class="app-user-name">{{ user.name }}</span>
+        <a href="/settings" class="app-settings-link{% if account_settings %} is-active{% endif %}"{% if account_settings %} aria-current="page"{% endif %}>Settings</a>
+        <form method="post" action="/logout">
+            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+            <button class="app-sign-out">Sign out</button>
+          </form>
+        </div>
+      </aside>
+  {% else %}
+    <header class="auth-header"><a href="/login" class="app-brand">Kanban Flow</a></header>
+  {% endif %}
+  <main id="main-content"{% if user %} class="app-main" :inert="isMobile && navOpen"{% else %} class="auth-main"{% endif %}>{% block content %}{% endblock %}</main>
+  {% if user %}</div>{% endif %}
+</body>
+</html>

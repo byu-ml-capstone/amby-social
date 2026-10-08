@@ -1,0 +1,7 @@
+<form action="/projects/{{ project.slug }}/sprints/{{ planning_sprint.id }}/start" method="post" class="app-form sprint-form" @submit="$el.querySelector('[type=submit]').disabled = true">
+  <header class="app-dialog-header"><h2 id="sprint-start-heading" tabindex="-1" autofocus>Start {{ planning_sprint.name }}?</h2></header>
+  {% if start_error %}<p class="form-error">{{ start_error }}</p>{% endif %}
+  <p>{{ planning_sprint.name }} has {{ planning_ticket_count }} tickets worth {{ planning_points }} committed points.</p>
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  <div class="app-form-actions"><button class="app-secondary-button" type="button" @click="$refs.startForm.close()">Cancel</button><button class="app-primary-button" type="submit">Start sprint</button></div>
+</form>

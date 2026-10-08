@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Sign in - Kanban Flow{% endblock %}
+{% block content %}
+<div class="auth-page">
+<section class="auth-card app-surface" aria-labelledby="login-heading">
+  <p class="section-eyebrow">Kanban Flow</p>
+  <h1 id="login-heading" class="app-page-title">Sign in</h1>
+  {% if error %}<p id="form-error" role="alert" class="form-error">{{ error }}</p>{% endif %}
+  <form method="post" action="/login" class="app-form">
+    <div>
+      <label for="login-email">Email</label>
+      <input
+        id="login-email"
+        class="app-input"
+        type="email"
+        name="email"
+        required
+        {% if error %}aria-describedby="form-error" aria-invalid="true"{% endif %}
+      >
+    </div>
+    <div>
+      <label for="login-password">Password</label>
+      <input
+        id="login-password"
+        class="app-input"
+        type="password"
+        name="password"
+        required
+        {% if error %}aria-describedby="form-error" aria-invalid="true"{% endif %}
+      >
+    </div>
+    <button class="app-primary-button auth-submit">Sign in</button>
+  </form>
+  <p class="auth-prompt">No account? <a href="/register">Register</a></p>
+</section>
+</div>
+{% endblock %}

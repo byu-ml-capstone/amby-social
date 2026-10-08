@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Kanban Flow{% endblock %}
+{% block content %}
+<div x-data="{ projectDialog: {{ 'true' if error else 'false' }} }" class="app-page app-dashboard">
+  <section class="my-work" aria-labelledby="my-work-heading">
+    <h1 id="my-work-heading" class="app-page-title">My Work</h1>
+    {% if not overdue_tickets and not in_progress_tickets and not next_tickets and not recently_completed_tickets %}
+    <p class="app-empty-state">No assigned work.</p>
+    {% endif %}
+    <div class="my-work-grid">
+      {% for group_id, heading, tickets in [
+        ('overdue', 'Overdue', overdue_tickets),
+        ('in-progress', 'In progress', in_progress_tickets),
+        ('next', 'Next', next_tickets),
+        ('recently-completed', 'Recently completed', recently_completed_tickets),
+      ] %}
+      <section id="my-work-{{ group_id }}" class="surface my-work-group" aria-labelledby="my-work-{{ group_id }}-heading">
+        <h2 id="my-work-{{ group_id }}-heading">{{ heading }}</h2>
+        {% if tickets %}
+        <ul class="app-row-list">
+          {% for ticket, project in tickets %}
+          <li class="app-row">
+            <a class="app-row-link" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}">{{ ticket.title }}</a>
+            <span class="my-work-ticket-meta">
+              <span>{{ project.key }}</span>
+              <span>{{ ticket.status.value|replace('_', ' ')|capitalize }}</span>
+              <span>{{ ticket.priority.value|capitalize }}</span>
+              {% if ticket.due_date %}
+              <time datetime="{{ ticket.due_date.isoformat() }}" class="ticket-due-date{% if ticket.status.value != 'DONE' and ticket.due_date < today %} is-overdue{% endif %}">Due {{ ticket.due_date.strftime('%b %-d') }}</time>
+              {% endif %}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        <p class="app-empty-state">No tickets.</p>
+        {% endif %}
+      </section>
+      {% endfor %}
+    </div>
+  </section>
+
+  <div class="app-page-header">
+    <h2 id="projects-heading" class="app-page-title">Projects</h2>
+    <button x-ref="projectDialogOpener" class="app-primary-button" type="button"
+            aria-controls="project-dialog" aria-haspopup="dialog"
+            @click="projectDialog = true; $refs.projectDialog.showModal(); $nextTick(() => $refs.projectName.focus())">New project</button>
+  </div>
+
+  <section class="surface app-surface" aria-labelledby="projects-heading">
+    {% if projects %}
+      <ul class="app-row-list">
+        {% for project in projects %}
+        <li data-testid="project-row" class="app-row">
+            <a class="app-row-link" href="/projects/{{ project.slug }}">{{ project.name }}</a>
+          <span>{{ roles[project.id]|capitalize }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="app-empty-state">No projects yet.</p>
+    {% endif %}
+  </section>
+
+  <dialog id="project-dialog" x-ref="projectDialog" data-testid="project-dialog" class="app-dialog"
+          role="dialog" aria-modal="true" aria-labelledby="project-dialog-heading"
+          x-init="if (projectDialog) { $el.showModal(); $nextTick(() => $refs.projectName.focus()) }"
+          @close="projectDialog = false; $refs.projectDialogOpener.focus()"
+          @click="$event.target === $el && $el.close()">
+    <div class="app-dialog-header">
+        <h2 id="project-dialog-heading">New project</h2>
+      <button class="app-icon-button" type="button" @click="$refs.projectDialog.close()" aria-label="Close new project dialog">×</button>
+      </div>
+      {% if error %}<p id="form-error" role="alert" class="form-error">{{ error }}</p>{% endif %}
+      <form method="post" action="/projects" class="app-form">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <div>
+          <label for="project-name">Project name</label>
+          <input
+            id="project-name"
+            x-ref="projectName"
+            class="app-input"
+            name="name"
+            placeholder="Project name"
+            value="{{ name|default('') }}"
+            required
+            {% if error %}aria-describedby="form-error" aria-invalid="true"{% endif %}
+          >
+        </div>
+      <div class="app-form-actions">
+          <button class="app-ghost-button" type="button" @click="$refs.projectDialog.close()">Cancel</button>
+          <button class="app-primary-button">Create</button>
+        </div>
+      </form>
+  </dialog>
+</div>
+{% endblock %}

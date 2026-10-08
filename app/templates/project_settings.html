@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}{{ project.name }} Settings · Kanban Flow{% endblock %}
+{% block content %}
+<div class="project-board">
+  <header class="project-header">
+    <div><p class="section-eyebrow">Project</p><h1 class="project-title">Project settings</h1><p class="sprint-meta">{{ project.name }}</p>{% include "partials/sprint_selector.html" %}</div>
+  </header>
+  {% include "partials/project_nav.html" %}
+  {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
+  {% if saved %}<p class="form-status" role="status">Settings saved.</p>{% endif %}
+  <section class="settings-section app-surface" aria-labelledby="project-settings-heading">
+    <h2 id="project-settings-heading">Project details</h2>
+    <p>Key: <code>{{ project.key }}</code></p>
+    {% if role == 'OWNER' %}
+    <form class="app-form" action="/projects/{{ project.slug }}/settings/project" method="post" data-testid="owner-settings-controls">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label>Name <input name="name" value="{{ values.get('name', project.name) }}" maxlength="100" required></label>
+      <button class="app-primary-button" type="submit">Save settings</button>
+    </form>
+    {% else %}
+    <p>Name: {{ project.name }}</p>
+    {% endif %}
+  </section>
+  <section class="settings-section app-surface" aria-labelledby="integrations-heading">
+    <h2 id="integrations-heading">Integrations</h2>
+    <div class="integration-grid">
+      {% for provider, label in [('SLACK', 'Slack'), ('TEAMS', 'Teams'), ('DISCORD', 'Discord')] %}
+      <article class="integration-card">
+        <div><h3>{{ label }}</h3><p>{% if chat_integrations.get(provider) %}{{ 'Configured' if role == 'OWNER' else 'Connected' }}{% else %}Not connected{% endif %}</p></div>
+        {% if role == 'OWNER' %}
+        <form class="app-form" action="/projects/{{ project.slug }}/settings/integrations/{{ provider }}" method="post" data-testid="owner-settings-controls">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <label>Webhook URL <input type="url" name="url" maxlength="500" required></label>
+          <button class="app-secondary-button" type="submit">{{ 'Replace' if chat_integrations.get(provider) else 'Connect' }}</button>
+        </form>
+        {% if chat_integrations.get(provider) %}
+        <form action="/projects/{{ project.slug }}/settings/integrations/{{ provider }}/disconnect" method="post" data-testid="owner-settings-controls">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <input type="hidden" name="confirm" value="Disconnect">
+          <button class="app-danger-button" type="submit">Disconnect</button>
+        </form>
+        {% endif %}
+        {% endif %}
+      </article>
+      {% endfor %}
+      <article class="integration-card">
+        <div><h3>GitHub</h3><p class="integration-status">{{ github_status }}</p></div>
+        {% if github_repository_names %}
+        <ul class="github-repository-names" aria-label="Connected GitHub repositories">
+          {% for repository_name in github_repository_names %}<li>{{ repository_name }}</li>{% endfor %}
+        </ul>
+        {% endif %}
+        {% if role == 'OWNER' %}
+        {% if github_account_login %}<p>Account: <strong>{{ github_account_login }}</strong></p>{% endif %}
+        {% if github_selection_state %}
+        <form class="app-form" action="/projects/{{ project.slug }}/settings/integrations/github/repositories" method="post" data-testid="owner-settings-controls">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <input type="hidden" name="state" value="{{ github_selection_state }}">
+          <fieldset class="github-repository-list">
+            <legend>Repositories</legend>
+            {% for repository in github_available_repositories %}
+            <label class="github-repository-option"><input type="checkbox" name="repository_ids" value="{{ repository.id }}"> <span>{{ repository.full_name }}</span></label>
+            {% endfor %}
+          </fieldset>
+          <button class="app-primary-button" type="submit">Save repositories</button>
+        </form>
+        {% else %}
+        <form action="/projects/{{ project.slug }}/settings/integrations/github/connect" method="post" data-testid="owner-settings-controls">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <button class="app-secondary-button" type="submit"{% if not github_configured %} disabled{% endif %}>Connect GitHub</button>
+        </form>
+        {% if not github_configured %}<p>GitHub App settings not configured</p>{% endif %}
+        {% if github_repository_names %}
+        <form action="/projects/{{ project.slug }}/settings/integrations/github/sync" method="post" data-testid="owner-settings-controls">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <button class="app-secondary-button" type="submit">Retry sync</button>
+        </form>
+        {% endif %}
+        {% if github_has_repositories and github_status != 'Disconnected' %}
+        <form class="app-form" action="/projects/{{ project.slug }}/settings/integrations/github/disconnect" method="post" data-testid="owner-settings-controls">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <label>Type <strong>Disconnect GitHub</strong> to confirm <input name="confirm" required></label>
+          <button class="app-danger-button" type="submit">Disconnect</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        {% endif %}
+      </article>
+      <article class="integration-card">
+        <div><h3>Gmail</h3><p class="integration-status">{{ gmail_status }}</p></div>
+        {% if role == 'OWNER' %}
+        {% if gmail_connection %}
+        <p>Mailbox: <strong>{{ gmail_connection.google_email }}</strong></p>
+        {% if gmail_connection.label_mapping %}
+        <ul class="github-repository-names" aria-label="Gmail labels that create tickets">
+          {% for mapping in gmail_connection.label_mapping.values() %}<li>{{ mapping['name'] }} → {{ mapping['type'].replace('_', ' ')|capitalize }} · {{ mapping['priority']|capitalize }}</li>{% endfor %}
+        </ul>
+        {% else %}
+        <p>No labels create tickets yet.</p>
+        {% endif %}
+        {% if gmail_connection.last_error %}<p class="form-error">{{ gmail_connection.last_error }}</p>{% endif %}
+        {% endif %}
+        {% if gmail_status != 'Connected' %}
+        <form action="/projects/{{ project.slug }}/settings/integrations/gmail/connect" method="post" data-testid="owner-settings-controls">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <button class="app-secondary-button" type="submit"{% if not gmail_configured %} disabled{% endif %}>{{ 'Reconnect Gmail' if gmail_connection else 'Connect Gmail' }}</button>
+        </form>
+        {% if not gmail_configured %}<p>Google OAuth settings not configured</p>{% endif %}
+        {% else %}
+        <a class="app-secondary-button" href="/projects/{{ project.slug }}/settings/integrations/gmail/labels">Edit labels</a>
+        {% endif %}
+        {% if gmail_connection %}
+        <form class="app-form" action="/projects/{{ project.slug }}/settings/integrations/gmail/disconnect" method="post" data-testid="owner-settings-controls">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <label>Type <strong>Disconnect Gmail</strong> to confirm <input name="confirm" required></label>
+          <button class="app-danger-button" type="submit">Disconnect</button>
+        </form>
+        {% endif %}
+        {% if gmail_available_labels is not none %}
+        <dialog id="gmail-labels-dialog" class="app-dialog gmail-labels-dialog" aria-labelledby="gmail-labels-heading"
+                data-label-names='{{ gmail_available_labels|map(attribute="name")|map("lower")|list|tojson }}'
+                x-data="{ query: '', names: JSON.parse($el.dataset.labelNames) }"
+                x-init="$nextTick(() => { $el.showModal(); $refs.labelSearch.focus() })"
+                @close="history.replaceState(null, '', '/projects/{{ project.slug }}/settings')"
+                @click="$event.target === $el && $el.close()">
+          <div class="app-dialog-header">
+            <h2 id="gmail-labels-heading">Labels that create tickets</h2>
+            <button class="app-icon-button" type="button" @click="$el.closest('dialog').close()" aria-label="Close Gmail labels dialog">×</button>
+          </div>
+          <form class="app-form gmail-labels-form" action="/projects/{{ project.slug }}/settings/integrations/gmail/labels" method="post" data-testid="owner-settings-controls">
+            <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+            {% if gmail_available_labels %}
+            <label class="sr-only" for="gmail-label-search">Search labels</label>
+            <input id="gmail-label-search" class="app-input" type="search" x-ref="labelSearch" x-model="query" placeholder="Search labels" autocomplete="off">
+            {% endif %}
+            <fieldset class="gmail-label-list">
+              <legend class="sr-only">Gmail labels</legend>
+              {% for label in gmail_available_labels %}
+              {% set current = gmail_connection.label_mapping.get(label['id'], {}) %}
+              <div class="gmail-label-row" data-label-name="{{ label['name']|lower }}" x-data="{ checked: {{ 'true' if current else 'false' }} }" x-show="$el.dataset.labelName.includes(query.trim().toLowerCase())">
+                <input type="hidden" name="all_label_ids" value="{{ label['id'] }}">
+                <label class="gmail-label-name"><input type="checkbox" x-model="checked" name="label_ids" value="{{ label['id'] }}"{% if current %} checked{% endif %}><span>{{ label['name'] }}</span></label>
+                <div class="gmail-label-mapping" x-show="checked"{% if not current %} x-cloak{% endif %}>
+                  <select name="types" aria-label="Ticket type for {{ label['name'] }}">{% for ticket_type in ticket_types %}<option value="{{ ticket_type.value }}"{% if current.get('type', 'TASK') == ticket_type.value %} selected{% endif %}>{{ ticket_type.value.replace('_', ' ')|capitalize }}</option>{% endfor %}</select>
+                  <select name="priorities" aria-label="Priority for {{ label['name'] }}">{% for priority in priorities %}<option value="{{ priority.value }}"{% if current.get('priority', 'MEDIUM') == priority.value %} selected{% endif %}>{{ priority.value|capitalize }}</option>{% endfor %}</select>
+                </div>
+              </div>
+              {% else %}
+              <p class="gmail-label-empty">This mailbox has no labels yet. Create one in Gmail first.</p>
+              {% endfor %}
+              <p class="gmail-label-empty" x-show="query.trim() && !names.some(name => name.includes(query.trim().toLowerCase()))" x-cloak>No labels match “<span x-text="query.trim()"></span>”.</p>
+            </fieldset>
+            <button class="app-primary-button" type="submit">Save labels</button>
+          </form>
+        </dialog>
+        {% endif %}
+        {% endif %}
+      </article>
+    </div>
+  </section>
+  <section class="settings-section app-surface" aria-labelledby="members-heading">
+    <h2 id="members-heading">Members</h2>
+    {% for project_member, member_user in members %}
+    <article class="settings-member"><div><strong>{{ member_user.name }}</strong><p class="sprint-meta">{{ member_user.email }} · {{ project_member.role.value|capitalize }}</p></div>
+      {% if role == 'OWNER' %}
+      <div class="settings-member-controls"><form action="/projects/{{ project.slug }}/settings/members/{{ member_user.id }}" method="post">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <select name="role" aria-label="Role for {{ member_user.name }}">{% for value in ['OWNER', 'MEMBER'] %}<option value="{{ value }}"{% if project_member.role.value == value %} selected{% endif %}>{{ value.title() }}</option>{% endfor %}</select>
+        <button class="app-secondary-button" type="submit" aria-label="Change role for {{ member_user.name }}">Change role</button>
+      </form>
+      <form action="/projects/{{ project.slug }}/settings/members/{{ member_user.id }}/remove" method="post">
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}"><button class="app-danger-button" type="submit" aria-label="Remove {{ member_user.name }}">Remove</button>
+      </form>
+      </div>
+      {% endif %}
+    </article>
+    {% endfor %}
+    {% if role == 'OWNER' %}
+    <form class="app-form settings-add-member" action="/projects/{{ project.slug }}/settings/members" method="post" data-testid="owner-settings-controls">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label>Email <input type="email" name="email" required></label>
+      <label class="sr-only" for="add-member-role">Role for new member</label><select id="add-member-role" name="role"><option value="MEMBER">Member</option><option value="OWNER">Owner</option></select>
+      <button class="app-secondary-button" type="submit">Add member</button>
+    </form>
+    {% endif %}
+  </section>
+  {% if role == 'OWNER' %}
+  <section class="settings-section settings-danger-zone app-surface" aria-labelledby="danger-heading" data-testid="owner-settings-controls">
+    <h2 id="danger-heading">Danger zone</h2>
+    <p>Type the immutable project slug <code>{{ project.slug }}</code> to delete this project.</p>
+    <form class="app-form" action="/projects/{{ project.slug }}/settings/delete" method="post">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label>Confirm slug <input name="confirm" required></label>
+      <button class="app-danger-button" type="submit">Delete project</button>
+    </form>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

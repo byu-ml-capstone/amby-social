@@ -1,0 +1,12 @@
+{% if sprint_options %}<div class="sprint-selector">
+  <label for="sprint-selector">Sprint</label>
+  <select id="sprint-selector" onchange="window.location.href = this.value">
+    {% for selector_sprint in sprint_options %}
+      {% if selector_sprint.status.value == 'CLOSED' %}
+      <option value="/projects/{{ project.slug }}/sprints/{{ selector_sprint.id }}"{% if selected_sprint_id|default('') == selector_sprint.id %} selected{% endif %}>{{ selector_sprint.name }} · {{ selector_sprint.status.value|capitalize }}</option>
+      {% else %}
+      <option value="/projects/{{ project.slug }}?sprint_id={{ selector_sprint.id }}"{% if selected_sprint_id|default('') == selector_sprint.id %} selected{% endif %}>{{ selector_sprint.name }} · {{ selector_sprint.status.value|capitalize }}</option>
+      {% endif %}
+    {% endfor %}
+  </select>
+</div>{% endif %}

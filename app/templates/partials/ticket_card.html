@@ -1,0 +1,23 @@
+<article id="ticket-{{ ticket.id }}" class="ticket-card" draggable="true"
+         data-ticket-status-url="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/status"
+         hx-get="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}?card=true"
+         hx-trigger="refresh-ticket-card-{{ ticket.id }} from:body"
+         hx-target="this" hx-swap="outerHTML">
+  <button type="button" class="ticket-card-open" @click="ticketOpener = '{{ ticket.id }}'"
+          hx-get="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"
+          hx-target="#ticket-detail-root" hx-swap="innerHTML">
+    <span class="ticket-card-title">
+      <span class="ticket-number">#{{ ticket.ticket_number }}</span>
+      <span>{{ ticket.title }}</span>
+    </span>
+    <span class="ticket-card-meta">
+      <span>{{ ticket.type.value|replace('_', ' ')|capitalize }}</span>
+      <span>{{ ticket.priority.value|capitalize }}</span>
+      <span>{% if ticket.assignee_id %}{{ (assignee_names|default({})).get(ticket.assignee_id, "Unassigned") }}{% else %}Unassigned{% endif %}</span>
+      {% if ticket.story_points %}<span>{{ ticket.story_points }} pts</span>{% endif %}
+      {% if ticket.due_date %}
+      <time datetime="{{ ticket.due_date.isoformat() }}" class="ticket-due-date{% if ticket.status.value != 'DONE' and ticket.due_date < today %} is-overdue{% endif %}">Due {{ ticket.due_date.strftime('%b %-d') }}</time>
+      {% endif %}
+    </span>
+  </button>
+</article>

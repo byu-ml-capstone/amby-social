@@ -1,0 +1,15 @@
+<form action="/projects/{{ project.slug }}/sprints" method="post" class="app-form sprint-form">
+  <header class="app-dialog-header"><h2 id="sprint-form-heading">Plan a sprint</h2></header>
+  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+  {% if field_errors.form %}<p class="form-error">{{ field_errors.form }}</p>{% endif %}
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  <label>Name <input name="name" required value="{{ values.name|default('') }}"></label>
+  {% if field_errors.name %}<p class="form-error">{{ field_errors.name }}</p>{% endif %}
+  <label>Goal <textarea name="goal" required>{{ values.goal|default('') }}</textarea></label>
+  {% if field_errors.goal %}<p class="form-error">{{ field_errors.goal }}</p>{% endif %}
+  <label>Start date <input type="date" name="start_date" required value="{{ values.start_date|default('') }}"></label>
+  {% if field_errors.start_date %}<p class="form-error">{{ field_errors.start_date }}</p>{% endif %}
+  <label>End date <input type="date" name="end_date" required value="{{ values.end_date|default('') }}"></label>
+  {% if field_errors.end_date %}<p class="form-error">{{ field_errors.end_date }}</p>{% endif %}
+  <div class="app-form-actions"><button class="app-secondary-button" type="button" @click="$refs.sprintForm.close()">Cancel</button><button class="app-primary-button" type="submit">Create sprint</button></div>
+</form>
