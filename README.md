@@ -1,9 +1,8 @@
-# Kanban Flow — Slice 1
+# Kanban Flow
 
 Engineering workflow tracker: accounts, projects, membership, tickets, a Kanban
-board, chat notifications on ticket create/done, and a JSON sprint API. Built
-with FastAPI, SQLModel, and SQLite. Velocity, AI reports, GitHub webhooks, and
-the MCP server are **not** part of this slice — see "Out of scope" below.
+board, sprints with velocity, chat notifications, GitHub pull-request sync, an
+MCP server, and AI-drafted sprint reports. Built with FastAPI, SQLModel, and SQLite.
 
 ## Prerequisites
 
@@ -230,15 +229,22 @@ The MCP tools cover:
 - project create, list, read, rename, and delete
 - ticket create, list, read, update, status change, and delete
 - sprint list, create, start, close, read, update, and history
+- sprint report read, payload, and save (see below)
 - project-member list, add, role update, and removal
 
 Destructive tools retain the API's owner checks; sprint deletion is not
 available. Revoke a lost or unused token with `DELETE /api/v1/tokens/{token_id}`;
 deletion is idempotent and immediately prevents further bearer-token use.
 
-## Out of scope for this slice
+## Sprint reports
 
-AI reports, GitHub webhooks, and rate limiting are out of scope.
+Closing a sprint creates an empty report draft. The draft is written by your own
+MCP client, so the server needs no LLM API key: ask it to "draft the sprint report
+for Sprint 3". It reads `get_sprint_report_payload` (sprint, tickets at close,
+totals, recent velocity) and saves with `save_sprint_report`, which needs a
+write-scope token. The server rejects a draft that cites a ticket ref, ISO date,
+or point count missing from the payload. Any member then edits the draft on the
+closed sprint's page; only an owner can finalize it, after which it is read-only.
 
 ## Design documents
 
