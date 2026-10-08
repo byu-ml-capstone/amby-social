@@ -381,6 +381,9 @@ async def test_sprint_tools_expose_typed_input_schemas():
         "get_sprint",
         "update_sprint",
         "get_sprint_history",
+        "get_sprint_report",
+        "get_sprint_report_payload",
+        "save_sprint_report",
         "create_ticket",
         "list_tickets",
         "get_ticket",
@@ -782,3 +785,54 @@ async def test_get_attachment_refuses_images_too_large_to_decode(monkeypatch):
         result = await client.call_tool("get_attachment", {"attachment_id": "att-1"})
     assert result.is_error is True
     assert "too large" in result.content[0].text
+
+
+@pytest.mark.anyio
+async def test_sprint_report_tools_delegate_to_the_api(monkeypatch):
+    calls = []
+
+    async def fake_request(method, path, json=None):
+        calls.append((method, path, json))
+        return {}
+
+    monkeypatch.setattr(mcp_server, "api_request", fake_request)
+
+    async with Client(mcp) as client:
+        await client.call_tool("get_sprint_report", {"sprint_id": "sprint-1"})
+        await client.call_tool("get_sprint_report_payload", {"sprint_id": "sprint-1"})
+        await client.call_tool(
+            "save_sprint_report", {"sprint_id": "sprint-1", "goal_summary": "Met."}
+        )
+
+    assert calls == [
+        ("GET", "/api/v1/sprints/sprint-1/report", None),
+        ("GET", "/api/v1/sprints/sprint-1/report/payload", None),
+        ("GET", "/api/v1/sprints/sprint-1/report/payload", None),
+        (
+            "PUT",
+            "/api/v1/sprints/sprint-1/report",
+            {"generated_by": "MCP_CLIENT", "goal_summary": "Met."},
+        ),
+    ]
+
+
+@pytest.mark.anyio
+async def test_save_sprint_report_names_ungrounded_facts_without_saving(monkeypatch):
+    calls = []
+    payload = {"tickets": [{"ref": "PAY-1", "ticket_number": 1, "story_points_at_close": 3}]}
+
+    async def fake_request(method, path, json=None):
+        calls.append(method)
+        return payload
+
+    monkeypatch.setattr(mcp_server, "api_request", fake_request)
+
+    async with Client(mcp) as client:
+        result = await client.call_tool(
+            "save_sprint_report",
+            {"sprint_id": "sprint-1", "completed_summary": "PAY-1 and PAY-7 took 13 pts."},
+        )
+
+    assert result.is_error is True
+    assert "PAY-7, 13 pts" in result.content[0].text
+    assert calls == ["GET"]

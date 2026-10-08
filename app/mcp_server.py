@@ -18,10 +18,12 @@ from starlette.responses import JSONResponse
 
 try:
     from app.models import Priority, Role, TicketStatus, TicketType
+    from app.report_grounding import ungrounded_facts
 except ModuleNotFoundError as error:
     if error.name != "app":
         raise
     from models import Priority, Role, TicketStatus, TicketType
+    from report_grounding import ungrounded_facts
 
 
 class MCPSettings(BaseSettings):
@@ -478,3 +480,55 @@ async def update_sprint(
 async def get_sprint_history(sprint_id: str) -> list[dict[str, object]]:
     """Get a closed sprint's ticket history."""
     return await _tool_request("GET", f"/api/v1/sprints/{_path_segment(sprint_id)}/history")
+
+
+@mcp.tool()
+async def get_sprint_report(sprint_id: str) -> dict[str, object]:
+    """Get a closed sprint's report draft and its status (PENDING until someone drafts it)."""
+    return await _tool_request("GET", f"/api/v1/sprints/{_path_segment(sprint_id)}/report")
+
+
+@mcp.tool()
+async def get_sprint_report_payload(sprint_id: str) -> dict[str, object]:
+    """Get the facts for drafting a closed sprint's report: sprint, tickets at close,
+    totals, and recent velocity. Draft goal_summary, completed_summary,
+    blockers_and_rollovers, and velocity_summary from this alone, then call
+    save_sprint_report. Every ticket ref (PAY-12 or #12), ISO date, and point count
+    ("5 pts") you write must appear here; drafts citing anything else are rejected."""
+    return await _tool_request("GET", f"/api/v1/sprints/{_path_segment(sprint_id)}/report/payload")
+
+
+@mcp.tool()
+async def save_sprint_report(
+    sprint_id: str,
+    goal_summary: str | None = None,
+    completed_summary: str | None = None,
+    blockers_and_rollovers: str | None = None,
+    velocity_summary: str | None = None,
+) -> dict[str, object]:
+    """Save an AI-drafted sprint report built from get_sprint_report_payload (Markdown).
+    The project's people review, edit, and finalize it afterwards in the web app."""
+    sections = {
+        key: value
+        for key, value in {
+            "goal_summary": goal_summary,
+            "completed_summary": completed_summary,
+            "blockers_and_rollovers": blockers_and_rollovers,
+            "velocity_summary": velocity_summary,
+        }.items()
+        if value is not None
+    }
+    path = f"/api/v1/sprints/{_path_segment(sprint_id)}/report"
+    # The API enforces this too, but its error text is withheld from MCP clients; checking
+    # here tells the model exactly which of its own facts to fix.
+    payload = await _tool_request("GET", f"{path}/payload")
+    if isinstance(payload, CallToolResult):
+        return payload
+    missing = ungrounded_facts("\n".join(sections.values()), payload)
+    if missing:
+        return _tool_error(
+            "Draft cites facts not in get_sprint_report_payload: "
+            + ", ".join(missing)
+            + ". Rewrite using only values from the payload."
+        )
+    return await _tool_request("PUT", path, {"generated_by": "MCP_CLIENT", **sections})
