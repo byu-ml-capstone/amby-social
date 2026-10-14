@@ -31,7 +31,7 @@ fi
 
 echo -n "waiting for /health "
 for _ in $(seq 1 60); do
-    if curl -sSf "$BASE_URL/health" >/dev/null 2>&1; then
+    if curl -fsSL "$BASE_URL/health" >/dev/null 2>&1; then
         echo " ready"
         break
     fi
@@ -42,7 +42,7 @@ done
 check() {
     local path=$1 expected=$2
     local code
-    code=$(curl -sS -o /dev/null -w '%{http_code}' "$BASE_URL$path")
+    code=$(curl -sSL -o /dev/null -w '%{http_code}' "$BASE_URL$path")
     if [ "$code" = "$expected" ]; then
         echo "ok    $path -> $code"
     else
