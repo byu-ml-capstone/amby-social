@@ -12,11 +12,11 @@ services:
       # doyoung-demo-staging.ml-capstone.cs.byu.edu. 127.0.0.1 stays in the list
       # so the healthcheck below gets past TrustedHostMiddleware.
       ALLOWED_HOSTS: '["127.0.0.1","${APP_HOST}"]'
-      ALLOWED_ORIGINS: '["http://${APP_HOST}"]'
+      ALLOWED_ORIGINS: '["https://${APP_HOST}"]'
       SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required}
-      # The class domains are http-only, so production's https guardrails cannot hold.
       ENVIRONMENT: development
-      SECURE_COOKIES: "false"
+      # Traefik terminates https with the class wildcard cert.
+      SECURE_COOKIES: "true"
       DATABASE_URL: sqlite:////data/kanbanflow.db
       ATTACHMENTS_DIR: /data/attachments
       FORWARDED_ALLOW_IPS: "*"

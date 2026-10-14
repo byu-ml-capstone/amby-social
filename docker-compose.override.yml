@@ -7,3 +7,5 @@ services:
     environment:
       ALLOWED_HOSTS: '["127.0.0.1","localhost"]'
       ALLOWED_ORIGINS: '["http://localhost:8000"]'
+      # Local is plain http, so secure cookies would never be sent back.
+      SECURE_COOKIES: "false"
