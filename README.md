@@ -16,7 +16,8 @@ MCP server, and AI-drafted sprint reports. Built with FastAPI, SQLModel, and SQL
 ```
 
 Open <http://localhost:8000> in a browser. Register an account, create a
-project, and add a ticket to the board.
+project, and add a ticket to the board. No keys are needed for local runs.
+Plain `docker compose up` needs a session secret: `SESSION_SECRET=dev docker compose up`.
 
 ## Web workspace
 
@@ -74,12 +75,12 @@ Per Coolify Application (staging and production):
 
 1. Set `APP_HOST` and `SESSION_SECRET` in Environment Variables. The full list,
    including the optional GitHub App values, is in `.env.example`.
-2. Domains: attach `http://<APP_HOST>` to the **`web`** service, then redeploy.
-3. Verify with `./smoke-test.sh http://<APP_HOST>`.
+2. Domains: attach `https://<APP_HOST>` to the **`web`** service, then redeploy.
+3. Verify with `./smoke-test.sh https://<APP_HOST>`.
 
-The class domains are http-only and VPN-only, so the app runs with
-`ENVIRONMENT=development` and `SECURE_COOKIES=false`. Gmail intake and inbound
-GitHub webhooks do not work there; everything else does.
+The class domains serve https through Traefik but are VPN-only, so inbound
+GitHub webhooks cannot reach them. The class deployment leaves the GitHub App
+and Gmail intake unconfigured; everything else works.
 
 ## Develop (without Docker)
 
