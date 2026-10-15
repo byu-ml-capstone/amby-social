@@ -245,9 +245,3 @@ totals, recent velocity) and saves with `save_sprint_report`, which needs a
 write-scope token. The server rejects a draft that cites a ticket ref, ISO date,
 or point count missing from the payload. Any member then edits the draft on the
 closed sprint's page; only an owner can finalize it, after which it is read-only.
-
-## Design documents
-
-- `cs482_slice1_design.md` — the authoritative spec for this slice
-- `cs482_slice1_plan.md` — the implementation plan
-- `cs482_workflow.md`, `cs482_tool_review.md` — original product research and specification

@@ -13,3 +13,6 @@ venv/
 *.db-shm
 .DS_Store
 /data/
+
+# Personal course write-ups; kept locally, not in the team repo.
+cs482_*
