@@ -1,0 +1,554 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-15T16:26:41+00:00",
+  "title": "Design System: Kanban Flow",
+  "extensions": {
+    "colorMeta": {
+      "label-white": {
+        "role": "neutral",
+        "displayName": "Label White",
+        "canonical": "#ffffff",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "inset-gray": {
+        "role": "neutral",
+        "displayName": "Inset Gray",
+        "canonical": "#f4f5f7",
+        "tonalRamp": [
+          "#0b0b0c",
+          "#242526",
+          "#414243",
+          "#606163",
+          "#818284",
+          "#a4a5a7",
+          "#c9c9ca",
+          "#eeeeef"
+        ]
+      },
+      "carbon-ink": {
+        "role": "neutral",
+        "displayName": "Carbon Ink",
+        "canonical": "#15171c",
+        "tonalRamp": [
+          "#090b10",
+          "#23252a",
+          "#404248",
+          "#5f6167",
+          "#808289",
+          "#a2a5ac",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "ink-secondary": {
+        "role": "neutral",
+        "displayName": "Ink Secondary",
+        "canonical": "#3d4148",
+        "tonalRamp": [
+          "#080b11",
+          "#22252c",
+          "#3e4249",
+          "#5d6169",
+          "#7e838a",
+          "#a0a5ae",
+          "#c7c9cd",
+          "#eceef2"
+        ]
+      },
+      "label-gray": {
+        "role": "neutral",
+        "displayName": "Label Gray",
+        "canonical": "#5b6068",
+        "tonalRamp": [
+          "#080b11",
+          "#21252c",
+          "#3e424a",
+          "#5d626a",
+          "#7d838b",
+          "#a0a5ae",
+          "#c7c9cd",
+          "#eceff2"
+        ]
+      },
+      "rule-light": {
+        "role": "neutral",
+        "displayName": "Rule Light",
+        "canonical": "#e3e5e9",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#404245",
+          "#5f6165",
+          "#808286",
+          "#a3a5a9",
+          "#c8c9cb",
+          "#eeeef0"
+        ]
+      },
+      "rule-strong": {
+        "role": "neutral",
+        "displayName": "Rule Strong",
+        "canonical": "#c9ccd2",
+        "tonalRamp": [
+          "#090b0f",
+          "#23252a",
+          "#404247",
+          "#5f6166",
+          "#808288",
+          "#a2a5ab",
+          "#c8c9cb",
+          "#edeef1"
+        ]
+      },
+      "control-border": {
+        "role": "neutral",
+        "displayName": "Control Border",
+        "canonical": "#8a9099",
+        "tonalRamp": [
+          "#070b12",
+          "#21252d",
+          "#3d424a",
+          "#5c626a",
+          "#7d838c",
+          "#9fa5af",
+          "#c7c9cd",
+          "#eceff3"
+        ]
+      },
+      "signal-orange": {
+        "role": "primary",
+        "displayName": "Signal Orange",
+        "canonical": "#d9531e",
+        "tonalRamp": [
+          "#3a0000",
+          "#610000",
+          "#870000",
+          "#af2900",
+          "#d7511b",
+          "#ff7645",
+          "#f3baa7",
+          "#ffdfcb"
+        ]
+      },
+      "accent-orange": {
+        "role": "primary",
+        "displayName": "Accent Orange",
+        "canonical": "#c2410c",
+        "tonalRamp": [
+          "#390000",
+          "#5f0000",
+          "#860000",
+          "#ad2c00",
+          "#d55325",
+          "#fd784c",
+          "#f2baa8",
+          "#ffdfcd"
+        ]
+      },
+      "accent-orange-deep": {
+        "role": "primary",
+        "displayName": "Accent Orange Deep",
+        "canonical": "#a63a0b",
+        "tonalRamp": [
+          "#340000",
+          "#590000",
+          "#7e0f00",
+          "#a43808",
+          "#cb5c35",
+          "#f38058",
+          "#edbdac",
+          "#ffe2d1"
+        ]
+      },
+      "accent-text": {
+        "role": "primary",
+        "displayName": "Accent Text",
+        "canonical": "#b8410f",
+        "tonalRamp": [
+          "#370000",
+          "#5c0000",
+          "#820000",
+          "#a93200",
+          "#d0582c",
+          "#f87c51",
+          "#f0bbaa",
+          "#ffe0ce"
+        ]
+      },
+      "delivered-green": {
+        "role": "secondary",
+        "displayName": "Delivered Green",
+        "canonical": "#1a7f4b",
+        "tonalRamp": [
+          "#001600",
+          "#003404",
+          "#005322",
+          "#037441",
+          "#399762",
+          "#60bb83",
+          "#b1d3bc",
+          "#d6f9e1"
+        ]
+      },
+      "danger-red": {
+        "role": "tertiary",
+        "displayName": "Danger Red",
+        "canonical": "#c62828",
+        "tonalRamp": [
+          "#3b0000",
+          "#620000",
+          "#890000",
+          "#b12021",
+          "#d94a43",
+          "#ff7065",
+          "#f8b6ae",
+          "#ffdbd3"
+        ]
+      },
+      "highlight-peach": {
+        "role": "neutral",
+        "displayName": "Highlight Peach",
+        "canonical": "#fdf0e9",
+        "tonalRamp": [
+          "#110905",
+          "#2c231e",
+          "#4a403a",
+          "#6a5f59",
+          "#8b8079",
+          "#aea29c",
+          "#cdc8c5",
+          "#f2edea"
+        ]
+      },
+      "nav-carbon": {
+        "role": "neutral",
+        "displayName": "Nav Carbon",
+        "canonical": "#15171c",
+        "tonalRamp": [
+          "#090b10",
+          "#23252a",
+          "#404248",
+          "#5f6167",
+          "#808289",
+          "#a2a5ac",
+          "#c8c9cc",
+          "#edeef1"
+        ]
+      },
+      "nav-text": {
+        "role": "neutral",
+        "displayName": "Nav Text",
+        "canonical": "#e8eaee",
+        "tonalRamp": [
+          "#0a0b0e",
+          "#242528",
+          "#404245",
+          "#5f6165",
+          "#808286",
+          "#a3a5a9",
+          "#c8c9cb",
+          "#eeeef0"
+        ]
+      },
+      "nav-muted": {
+        "role": "neutral",
+        "displayName": "Nav Muted",
+        "canonical": "#a3a8b0",
+        "tonalRamp": [
+          "#080b11",
+          "#21252b",
+          "#3e4249",
+          "#5d6169",
+          "#7e838a",
+          "#a0a5ad",
+          "#c7c9cc",
+          "#eceff2"
+        ]
+      },
+      "nav-active": {
+        "role": "neutral",
+        "displayName": "Nav Active",
+        "canonical": "#2a2d34",
+        "tonalRamp": [
+          "#090b11",
+          "#22252c",
+          "#3f4249",
+          "#5e6169",
+          "#7f828b",
+          "#a1a5ae",
+          "#c7c9cd",
+          "#edeef2"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page and project titles."
+      },
+      "title-field": {
+        "displayName": "Title field",
+        "purpose": "Editable ticket title in the detail view."
+      },
+      "section": {
+        "displayName": "Section",
+        "purpose": "Dialog and panel headings."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Sprint name and in-panel headings."
+      },
+      "stamp": {
+        "displayName": "Stamp",
+        "purpose": "Ticket reference KEY-n, tabular 800."
+      },
+      "card-title": {
+        "displayName": "Card title",
+        "purpose": "Ticket title on a label card."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Base text, buttons, nav."
+      },
+      "meta": {
+        "displayName": "Meta",
+        "purpose": "Card meta line, date line, stats."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Form labels, small secondary text."
+      },
+      "column-head": {
+        "displayName": "Column head",
+        "purpose": "Uppercase board column and My Work group heads over a 2px rule."
+      },
+      "type-stamp": {
+        "displayName": "Type stamp",
+        "purpose": "Uppercase ticket type in the card stamp row."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Branch commands, tokens, code."
+      }
+    },
+    "shadows": [],
+    "borders": [
+      {
+        "name": "rule",
+        "value": "1px solid #e3e5e9",
+        "purpose": "Row and section dividers."
+      },
+      {
+        "name": "card",
+        "value": "1px solid #c9ccd2",
+        "purpose": "Label cards, dialogs, menus."
+      },
+      {
+        "name": "tear-line",
+        "value": "1px dashed #c9ccd2",
+        "purpose": "Card stamp-row divider."
+      },
+      {
+        "name": "head-rule",
+        "value": "2px solid #15171c",
+        "purpose": "Under column and group heads."
+      },
+      {
+        "name": "focus-ring",
+        "value": "3px solid #d9531e, offset 2px",
+        "purpose": "Every :focus-visible."
+      },
+      {
+        "name": "backdrop",
+        "value": "rgb(21 23 28 / 40%)",
+        "purpose": "Dialog and drawer backdrop."
+      }
+    ],
+    "motion": [
+      {
+        "name": "border-hover",
+        "value": "120ms ease",
+        "purpose": "Card border and attachment state changes."
+      },
+      {
+        "name": "drawer",
+        "value": "160ms cubic-bezier(.23, 1, .32, 1)",
+        "purpose": "Mobile sidebar slide-in."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "0.01ms",
+        "purpose": "All transitions under prefers-reduced-motion."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow-dialog",
+        "value": "520px"
+      },
+      {
+        "name": "mobile",
+        "value": "767px"
+      }
+    ],
+    "vocabulary": {
+      "types": {
+        "STORY": "Initiative",
+        "BUG": "Issue",
+        "DEMO_REQUEST": "Review request",
+        "TASK": "Task"
+      },
+      "stages": {
+        "BACKLOG": "Not planned",
+        "SELECTED": "Ready",
+        "IN_PROGRESS": "In progress",
+        "DONE": "Done"
+      },
+      "source": "app/labels.py"
+    }
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one accent-orange action per view: New ticket, Save, Create.",
+      "html": "<button class=\"ds-btn-primary\">New ticket</button>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-btn-primary{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;align-items:center;border:1px solid transparent;border-radius:var(--radius-sm);cursor:pointer;display:inline-flex;font-size:14px;font-weight:650;justify-content:center;min-height:44px;padding:var(--space-2) var(--space-3);background:var(--accent);border-color:var(--accent);color:#fff;}.ds-btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover);}.ds-btn-primary:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "White outlined button for secondary actions such as Sprint actions.",
+      "html": "<button class=\"ds-btn-secondary\">Sprint actions</button>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-btn-secondary{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;align-items:center;border:1px solid transparent;border-radius:var(--radius-sm);cursor:pointer;display:inline-flex;font-size:14px;font-weight:650;justify-content:center;min-height:44px;padding:var(--space-2) var(--space-3);background:var(--surface);border-color:var(--control-border);color:var(--text);}.ds-btn-secondary:hover{border-color:var(--text);}.ds-btn-secondary:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Outlined red at rest, filled red on hover; destructive actions only.",
+      "html": "<button class=\"ds-btn-danger\">Delete project</button>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-btn-danger{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;align-items:center;border:1px solid transparent;border-radius:var(--radius-sm);cursor:pointer;display:inline-flex;font-size:14px;font-weight:650;justify-content:center;min-height:44px;padding:var(--space-2) var(--space-3);background:var(--surface);border-color:var(--danger);color:var(--danger);}.ds-btn-danger:hover{background:var(--danger);color:#fff;}.ds-btn-danger:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "44px white field with a 3:1 control border and a label above.",
+      "html": "<label class=\"ds-field\"><span>Title</span><input placeholder=\"What needs doing?\"></label>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-field{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:grid;gap:var(--space-1);font-size:14px;}.ds-field span{color:var(--text-secondary);font-size:12px;font-weight:650;}.ds-field input{font:inherit;background:var(--surface);border:1px solid var(--control-border);border-radius:var(--radius-sm);color:var(--text);min-height:44px;padding:var(--space-2);}.ds-field input::placeholder{color:var(--muted);}.ds-field input:hover{border-color:var(--text);}.ds-field input:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}"
+    },
+    {
+      "name": "Carbon Sidebar",
+      "kind": "nav",
+      "refersTo": "nav-sidebar",
+      "description": "240px carbon project navigation with a filled active link.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-brand\" href=\"#\">Kanban Flow</a><a class=\"ds-nav-head\" href=\"#\">Projects</a><a class=\"ds-nav-link\" href=\"#\">UI Debug Project</a><a class=\"ds-nav-link is-active\" href=\"#\" aria-current=\"page\">Dev</a></nav>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-nav{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--nav);display:grid;gap:var(--space-1);padding:var(--space-5) var(--space-3);width:240px;font-size:14px;}.ds-nav a{text-decoration:none;}.ds-nav-brand{color:var(--nav-text);font-size:15px;font-weight:800;padding:0 var(--space-2) 24px;}.ds-nav-head,.ds-nav-link{align-items:center;border-radius:var(--radius-sm);display:flex;min-height:44px;padding:var(--space-2);}.ds-nav-head{color:var(--nav-text);font-weight:700;}.ds-nav-link{color:var(--nav-muted);}.ds-nav-link:hover,.ds-nav-head:hover,.ds-nav-link.is-active{background:var(--nav-active);color:var(--nav-text);}.ds-nav-link.is-active{font-weight:650;}.ds-nav a:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}"
+    },
+    {
+      "name": "Label Card",
+      "kind": "card",
+      "refersTo": "label-card",
+      "description": "A ticket as a shipping label: stamp row, dashed tear line, title, meta, stage bar.",
+      "html": "<article class=\"ds-card\"><span class=\"ds-card-top\"><b>DEV-10</b><span>Issue</span></span><span class=\"ds-card-title\">Login button misaligned</span><span class=\"ds-card-meta\"><span>Unassigned</span><span>5 pts</span></span><span class=\"ds-stage\"><i class=\"p\"></i><i class=\"p\"></i><i class=\"c\"></i><i></i></span></article>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-card{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:grid;width:260px;background:var(--surface);border:1px solid var(--line-strong);border-radius:var(--radius-sm);color:var(--text);transition:border-color 120ms ease;cursor:pointer;}.ds-card:hover{border-color:var(--text);}.ds-card-top{align-items:center;border-bottom:1px dashed var(--line-strong);display:flex;justify-content:space-between;padding:var(--space-2) var(--space-3);}.ds-card-top b{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;}.ds-card-top span{color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;}.ds-card-title{font-size:15px;font-weight:500;line-height:1.4;padding:var(--space-3) var(--space-3) 0;}.ds-card-meta{color:var(--muted);display:flex;font-size:13px;gap:0 var(--space-2);padding:var(--space-1) var(--space-3) 0;}.ds-card-meta>*+*::before{content:'\\00B7';margin-right:var(--space-2);}.ds-stage{display:grid;gap:3px;grid-template-columns:repeat(4,1fr);padding:var(--space-3);}.ds-stage i{background:var(--line);height:4px;}.ds-stage .p{background:var(--text);}.ds-stage .c{background:var(--signal);}"
+    },
+    {
+      "name": "Tracking Row",
+      "kind": "custom",
+      "refersTo": "panel",
+      "description": "My requests: reference stamp, title, and a labeled four-step tracker.",
+      "html": "<section class=\"ds-track\"><h2>My requests</h2><button class=\"ds-track-row\"><b>DEV-3</b><span>Ready for work</span><span class=\"ds-steps\"><span class=\"p\">Not planned</span><span class=\"p\">Ready</span><span class=\"c\">In progress</span><span>Done</span></span></button></section>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-track{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;border:1px solid var(--line);border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);width:640px;font-size:14px;color:var(--text);}.ds-track h2{font-size:15px;font-weight:700;margin:0 0 var(--space-1);}.ds-track-row{font:inherit;color:inherit;background:transparent;border:0;cursor:pointer;display:grid;align-items:center;gap:var(--space-2) var(--space-4);grid-template-columns:72px minmax(0,160px) minmax(0,1fr);min-height:44px;padding:0;text-align:left;width:100%;}.ds-track-row b{font-size:15px;font-weight:800;font-variant-numeric:tabular-nums;}.ds-track-row:hover>span:nth-child(2){text-decoration:underline;text-underline-offset:3px;}.ds-track-row:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}.ds-steps{color:var(--muted);display:grid;font-size:12px;gap:var(--space-1);grid-template-columns:repeat(4,1fr);padding:var(--space-2) 0;}.ds-steps>span{border-top:4px solid var(--line);padding-top:var(--space-1);}.ds-steps .p{border-color:var(--text);color:var(--text);}.ds-steps .c{border-color:var(--signal);color:var(--accent-text);font-weight:700;}"
+    },
+    {
+      "name": "Column Head",
+      "kind": "custom",
+      "refersTo": "label-card",
+      "description": "Boxless board column: uppercase head over a 2px carbon rule with a count.",
+      "html": "<h2 class=\"ds-colhead\">In progress <span>3</span></h2>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-colhead{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;align-items:baseline;border-bottom:2px solid var(--text);color:var(--text);display:flex;font-size:14px;font-weight:800;gap:var(--space-2);letter-spacing:.03em;margin:0;padding-bottom:var(--space-2);text-transform:uppercase;width:260px;}.ds-colhead span{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:500;letter-spacing:0;}"
+    },
+    {
+      "name": "Project Tabs",
+      "kind": "nav",
+      "refersTo": "nav-link-active",
+      "description": "Text tabs with a 3px carbon underline on the active tab.",
+      "html": "<nav class=\"ds-tabs\"><a class=\"is-active\" href=\"#\" aria-current=\"page\">Board</a><a href=\"#\">Backlog</a><a href=\"#\">List</a><a href=\"#\">History</a></nav>",
+      "css": ":host{--canvas:#ffffff;--surface:#ffffff;--surface-inset:#f4f5f7;--text:#15171c;--text-secondary:#3d4148;--muted:#5b6068;--line:#e3e5e9;--line-strong:#c9ccd2;--control-border:#8a9099;--signal:#d9531e;--accent:#c2410c;--accent-hover:#a63a0b;--accent-text:#b8410f;--done:#1a7f4b;--danger:#c62828;--highlight:#fdf0e9;--nav:#15171c;--nav-text:#e8eaee;--nav-muted:#a3a8b0;--nav-active:#2a2d34;--focus:#d9531e;--space-1:4px;--space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--radius-sm:4px;--radius-md:8px;}.ds-tabs{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;border-bottom:1px solid var(--line);display:flex;gap:var(--space-5);}.ds-tabs a{align-items:center;border-bottom:3px solid transparent;color:var(--muted);display:inline-flex;font-size:14px;font-weight:600;margin-bottom:-1px;min-height:44px;padding:0 2px;text-decoration:none;}.ds-tabs a:hover{color:var(--text);}.ds-tabs a.is-active{border-bottom-color:var(--text);color:var(--text);font-weight:700;}.ds-tabs a:focus-visible{outline:3px solid var(--focus);outline-offset:2px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Waybill Board",
+    "overview": "Every ticket is a parcel and the board is its tracking page. A lead who checks in a few times a day reads \"which stage is my request at\" the way they read courier tracking: a bold reference stamp, a short description, and a four-segment bar that shows how far along it is. The world comes from thermal shipping labels: a white ground, carbon ink, gray rules, dashed tear lines, and one signal orange that marks where a parcel is right now.\n\nThe interface is dense and quiet. Columns have no box around them, only an uppercase heading over a heavy carbon rule. Cards are flat labels with a 1px rule, not floating tiles. Hierarchy comes from weight (800 stamps, 700 headings, 500 titles), tabular numerals, and rules, never from shadow or tinted fills. Color is spent on state: orange for the current stage and the primary action, green for delivered work, red for destructive actions.\n\nThis world replaced an earlier hand-drawn sketch/paper theme. Handwritten faces, wobbly borders, and offset shadows from that theme are rejected.",
+    "keyCharacteristics": [
+      "White label ground, carbon ink, gray rules; a carbon sidebar frames the workspace.",
+      "One signal orange for \"here now\" and the primary action; green only for done.",
+      "System sans throughout, bold tabular reference stamps (DEV-3).",
+      "Flat: depth comes from rules and borders, not shadows.",
+      "Four-segment stage bars on cards and labeled four-step trackers in \"My requests\".",
+      "Plain-language labels everywhere: Not planned, Ready, In progress, Done."
+    ],
+    "rules": [
+      {
+        "name": "The Here-Now Rule",
+        "body": "Signal orange marks exactly one thing per parcel: the stage it is at now. Passed stages are carbon, unreached stages are rule gray, and a delivered parcel turns entirely green.",
+        "section": "colors"
+      },
+      {
+        "name": "The Ink-Not-Paint Rule",
+        "body": "Neutrals and white carry every surface. Color never fills a card, column, or panel; it appears only on state marks, the primary action, and destructive actions.",
+        "section": "colors"
+      },
+      {
+        "name": "The Stamp Rule",
+        "body": "A ticket is always named by its bold tabular reference (`DEV-3`) first; the title follows. Never lead with the title alone.",
+        "section": "typography"
+      },
+      {
+        "name": "The No-Hand Rule",
+        "body": "No handwritten, script, or display faces. The system sans is the only voice.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat Label Rule",
+        "body": "Labels lie on the table. A surface earns separation from a border or rule, never from a shadow.",
+        "section": "elevation"
+      },
+      {
+        "name": "The One Box Rule",
+        "body": "A box never sits inside another box. Columns, groups, and modal sections divide with rules; only cards, panels, and dialogs get borders.",
+        "section": "shapes"
+      }
+    ],
+    "dos": [
+      "Do name every ticket by its bold tabular stamp (`KEY-n`) before its title.",
+      "Do show stage with the four-segment bar: carbon passed, signal-orange current, rule-light ahead, all green when done.",
+      "Do use the plain-language labels from `app/labels.py` everywhere: types Initiative, Issue, Review request, Task; stages Not planned, Ready, In progress, Done.",
+      "Do divide columns, groups, and modal sections with rules (2px carbon under heads, 1px light between rows).",
+      "Do keep every target at 44px minimum and keep the 3px signal-orange focus ring.",
+      "Do keep one accent-orange primary button per view."
+    ],
+    "donts": [
+      "Don't use handwritten, script, or display faces; system sans only.",
+      "Don't use box-shadows or hard offset shadows; the system is flat.",
+      "Don't nest boxes: no bordered card inside a bordered panel inside a bordered column.",
+      "Don't add kickers or eyebrows above headings; the page title stands alone.",
+      "Don't use glyph or emoji icons; icons are inline SVG with `aria-label` on their button.",
+      "Don't use colored pills or tinted card fills for status or type; status lives in the stage bar, type in the stamp row.",
+      "Don't print raw enum values (BACKLOG, STORY, DEMO_REQUEST) on screen."
+    ]
+  }
+}
