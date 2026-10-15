@@ -18,64 +18,19 @@ def test_app_stylesheet_is_served(client):
     response = client.get("/static/app.css")
 
     assert response.status_code == 200
-    assert "--canvas: var(--sketch-paper);" in response.text
+    assert "--canvas: #ffffff;" in response.text
 
 
-def test_sketch_fonts_and_tokens_are_local_served_artifacts(client):
-    css_response = client.get("/static/app.css")
-    assert css_response.status_code == 200
-    css = css_response.text
+def test_theme_uses_system_type_without_handwritten_fonts(client):
+    css = client.get("/static/app.css").text
+    base = Path("app/templates/base.html").read_text()
 
-    assert 'font-family: "Kalam";' in css
-    assert 'url("/static/fonts/Kalam-Bold.woff2") format("woff2")' in css
-    assert "font-weight: 700;" in css
-    assert 'font-family: "Patrick Hand";' in css
-    assert 'url("/static/fonts/PatrickHand-Regular.woff2") format("woff2")' in css
-    assert "font-weight: 400;" in css
-    assert css.count("font-display: swap;") >= 2
-    assert "fonts.googleapis.com" not in css
-    assert "fonts.gstatic.com" not in css
-
+    for leftover in ("Kalam", "Patrick Hand", "cursive", "sketch", "@font-face", "/static/fonts/"):
+        assert leftover not in css
+        assert leftover not in base
     root_tokens = css.split(":root {", 1)[1].split("}", 1)[0]
-    assert "--sketch-paper: #fdfbf7;" in root_tokens
-    scope = css.split(".sketch-board,\n.sketch-ticket-detail {", 1)[1].split("}", 1)[0]
-    for declaration in (
-        "--sketch-paper: #fdfbf7;",
-        "--sketch-pencil: #2d2d2d;",
-        "--sketch-erased: #e5e0d8;",
-        "--sketch-correction: #ff4d4d;",
-        "--sketch-blue-ink: #2d5da1;",
-        "--sketch-post-it: #fff9c4;",
-        "--sketch-dot-size: 24px;",
-        "--sketch-border: 2px solid var(--sketch-pencil);",
-        "--sketch-radius-control: 6px 9px 7px 5px / 7px 5px 9px 6px;",
-        "--sketch-radius-card: 8px 12px 7px 10px / 10px 8px 11px 7px;",
-        "--sketch-radius-panel: 12px 9px 14px 10px / 10px 13px 9px 12px;",
-        "--sketch-shadow: 3px 3px 0 var(--sketch-pencil);",
-        '--sketch-font-heading: "Kalam", cursive;',
-        '--sketch-font-hand: "Patrick Hand", cursive;',
-    ):
-        assert declaration in scope
-
-    for filename in ("Kalam-Bold.woff2", "PatrickHand-Regular.woff2"):
-        response = client.get(f"/static/fonts/{filename}")
-        assert response.status_code == 200
-        assert response.content[:4] == b"wOF2"
-
-    for filename, copyright_line in (
-        ("Kalam-OFL.txt", "Copyright (c) 2014, Indian Type Foundry"),
-        ("PatrickHand-OFL.txt", "Copyright (c) 2010-2012 Patrick Wagesreiter"),
-    ):
-        response = client.get(f"/static/fonts/{filename}")
-        assert response.status_code == 200
-        assert copyright_line in response.text
-        assert "SIL OPEN FONT LICENSE Version 1.1" in response.text
-
-    attribution = client.get("/static/fonts/ATTRIBUTION.md")
-    assert attribution.status_code == 200
-    assert "Kalam Bold 700" in attribution.text
-    assert "Patrick Hand Regular 400" in attribution.text
-    assert "github.com/google/fonts/tree/main/ofl/" in attribution.text
+    assert "font-family: ui-sans-serif, system-ui" in root_tokens
+    assert client.get("/static/fonts/Kalam-Bold.woff2").status_code == 404
 
 
 def test_mobile_drawer_is_inert_only_while_closed(client, make_user, login_as):

@@ -57,7 +57,7 @@ def test_dropdown_moves_the_card_and_returns_a_fragment(client, active_sprint, l
     assert "<html" not in response.text
     page = client.get(f"/projects/{project.slug}").text
     in_progress = page.split('id="column-IN_PROGRESS"')[1].split("</section>")[0]
-    assert "#1" in in_progress
+    assert f"{project.key}-1</span>" in in_progress
 
 
 def test_unknown_ticket_number_is_404(client, make_user, make_project, login_as):

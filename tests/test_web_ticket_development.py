@@ -297,7 +297,9 @@ def test_copy_controls_use_the_existing_delegated_document_handler(
     assert 'querySelectorAll("[data-copy-text]")' not in javascript
 
 
-def test_api_ticket_detail_exposes_active_development_for_members(client, development_world, login_as):
+def test_api_ticket_detail_exposes_active_development_for_members(
+    client, development_world, login_as
+):
     login_as(development_world.member.email)
 
     body = client.get(f"/api/v1/tickets/{development_world.ticket_id}").json()

@@ -1,3 +1,4 @@
+{% set stage = ['BACKLOG', 'SELECTED', 'IN_PROGRESS', 'DONE'].index(ticket.status.value) %}
 <article id="ticket-{{ ticket.id }}" class="ticket-card" draggable="true"
          data-ticket-status-url="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/status"
          hx-get="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}?card=true"
@@ -6,18 +7,21 @@
   <button type="button" class="ticket-card-open" @click="ticketOpener = '{{ ticket.id }}'"
           hx-get="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"
           hx-target="#ticket-detail-root" hx-swap="innerHTML">
-    <span class="ticket-card-title">
-      <span class="ticket-number">#{{ ticket.ticket_number }}</span>
-      <span>{{ ticket.title }}</span>
+    <span class="ticket-label-top">
+      <span class="ticket-number">{{ project.key }}-{{ ticket.ticket_number }}</span>
+      <span class="ticket-type">{{ type_labels[ticket.type.value] }}</span>
     </span>
+    <span class="ticket-card-title">{{ ticket.title }}</span>
     <span class="ticket-card-meta">
-      <span>{{ ticket.type.value|replace('_', ' ')|capitalize }}</span>
-      <span>{{ ticket.priority.value|capitalize }}</span>
       <span>{% if ticket.assignee_id %}{{ (assignee_names|default({})).get(ticket.assignee_id, "Unassigned") }}{% else %}Unassigned{% endif %}</span>
+      {% if ticket.priority.value in ('HIGH', 'URGENT') %}<span class="ticket-priority">{{ ticket.priority.value|capitalize }}</span>{% endif %}
       {% if ticket.story_points %}<span>{{ ticket.story_points }} pts</span>{% endif %}
       {% if ticket.due_date %}
       <time datetime="{{ ticket.due_date.isoformat() }}" class="ticket-due-date{% if ticket.status.value != 'DONE' and ticket.due_date < today %} is-overdue{% endif %}">Due {{ ticket.due_date.strftime('%b %-d') }}</time>
       {% endif %}
+    </span>
+    <span class="ticket-stage{% if stage == 3 %} is-done{% endif %}" aria-hidden="true">
+      {% for step in range(4) %}<span{% if step < stage %} class="is-passed"{% elif step == stage and stage > 0 %} class="is-current"{% endif %}></span>{% endfor %}
     </span>
   </button>
 </article>

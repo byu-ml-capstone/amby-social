@@ -45,7 +45,7 @@ from app.models import (
     WebhookType,
     utcnow,
 )
-from app.routers.web import render
+from app.routers.web_common import render
 from app.schemas import SprintCreate
 from app.services import (
     add_project_member,

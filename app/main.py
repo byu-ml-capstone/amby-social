@@ -4,11 +4,13 @@ from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import http_exception_handler
+from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 from sqlmodel import Session
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.auth import SESSION_COOKIE
@@ -16,6 +18,7 @@ from app.config import settings
 from app.db import get_session
 from app.gmail import gmail_is_configured
 from app.gmail_sync import poll_forever
+from app.labels import STATUS_LABELS, TYPE_LABELS
 from app.mcp_server import MCPHTTPApp, http_session_manager
 from app.rendering import render_markdown
 from app.routers import (
@@ -27,7 +30,9 @@ from app.routers import (
     github_webhook,
     gmail,
     web,
+    web_auth,
     web_sprints,
+    web_tickets,
 )
 from app.security import enforce_auth_rate_limit
 
@@ -55,6 +60,30 @@ app.include_router(api_sprints.router)
 app.include_router(api_tickets.router)
 app.include_router(github_webhook.router)
 app.add_route("/mcp", MCPHTTPApp(), methods=["GET", "POST", "DELETE"])
+
+
+@app.exception_handler(StarletteHTTPException)
+async def send_signed_out_visitors_to_login(request: Request, exc: StarletteHTTPException):
+    """A signed-out browser opening a page gets the login screen, not a JSON 401.
+
+    Only page loads (GET asking for HTML) are redirected; API calls, bearer
+    clients, form posts and resource fetches such as <img> keep the 401. An
+    htmx request gets HX-Redirect so the login page doesn't land in a panel.
+    """
+    if (
+        exc.status_code == 401
+        and request.method == "GET"
+        and not request.url.path.startswith(("/api/", "/mcp"))
+        and "authorization" not in request.headers
+    ):
+        if request.headers.get("HX-Request"):
+            return JSONResponse(
+                {"detail": exc.detail}, status_code=401, headers={"HX-Redirect": "/login"}
+            )
+        if "text/html" in request.headers.get("accept", ""):
+            return RedirectResponse("/login", status_code=303)
+    return await http_exception_handler(request, exc)
+
 
 UNSAFE_METHODS = {"POST", "PATCH", "PUT", "DELETE"}
 AUTH_ACTIONS = {
@@ -114,13 +143,17 @@ async def block_foreign_origin_cookie_writes(request: Request, call_next):
 
 templates = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 templates.env.filters["markdown"] = render_markdown
+templates.env.globals["type_labels"] = TYPE_LABELS
+templates.env.globals["status_labels"] = STATUS_LABELS
 # Content hash per file, so a deploy changes the URL and browsers drop their cached copy.
 templates.env.globals["asset_version"] = {
     name: hashlib.sha256((Path(__file__).parent / "static" / name).read_bytes()).hexdigest()[:10]
     for name in ("app.js", "app.css")
 }
 
+app.include_router(web_auth.router)
 app.include_router(web.router)
+app.include_router(web_tickets.router)
 # Before web_sprints: its /settings/integrations/{provider}/disconnect would swallow gmail.
 app.include_router(gmail.router)
 app.include_router(web_sprints.router)
@@ -128,6 +161,6 @@ app.include_router(web_sprints.router)
 
 @app.get("/health")
 def health(session: Session = Depends(get_session)) -> dict[str, str]:
-    # The container healthcheck hits this, so it must fail when the database does.
+    # deploy.sh and container healthchecks wait on this, so it must fail when the database does.
     session.execute(text("SELECT 1"))
     return {"status": "ok"}

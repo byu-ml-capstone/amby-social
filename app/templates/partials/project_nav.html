@@ -2,6 +2,7 @@
   <nav class="project-tabs" data-testid="project-tabs" aria-label="Project navigation">
     <a class="project-tab{% if active_tab == 'board' %} is-active{% endif %}" href="/projects/{{ project.slug }}"{% if active_tab == 'board' %} aria-current="page"{% endif %}>Board</a>
     <a class="project-tab{% if active_tab == 'backlog' %} is-active{% endif %}" href="/projects/{{ project.slug }}/backlog"{% if active_tab == 'backlog' %} aria-current="page"{% endif %}>Backlog</a>
+    <a class="project-tab{% if active_tab == 'list' %} is-active{% endif %}" href="/projects/{{ project.slug }}/list"{% if active_tab == 'list' %} aria-current="page"{% endif %}>List</a>
     <a class="project-tab{% if active_tab == 'history' %} is-active{% endif %}" href="/projects/{{ project.slug }}/sprints"{% if active_tab == 'history' %} aria-current="page"{% endif %}>History</a>
   </nav>
   <a class="project-settings-link{% if active_tab == 'settings' %} is-active{% endif %}" href="/projects/{{ project.slug }}/settings"{% if active_tab == 'settings' %} aria-current="page"{% endif %}>Settings</a>

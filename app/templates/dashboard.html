@@ -4,9 +4,6 @@
 <div x-data="{ projectDialog: {{ 'true' if error else 'false' }} }" class="app-page app-dashboard">
   <section class="my-work" aria-labelledby="my-work-heading">
     <h1 id="my-work-heading" class="app-page-title">My Work</h1>
-    {% if not overdue_tickets and not in_progress_tickets and not next_tickets and not recently_completed_tickets %}
-    <p class="app-empty-state">No assigned work.</p>
-    {% endif %}
     <div class="my-work-grid">
       {% for group_id, heading, tickets in [
         ('overdue', 'Overdue', overdue_tickets),
@@ -14,21 +11,22 @@
         ('next', 'Next', next_tickets),
         ('recently-completed', 'Recently completed', recently_completed_tickets),
       ] %}
-      <section id="my-work-{{ group_id }}" class="surface my-work-group" aria-labelledby="my-work-{{ group_id }}-heading">
+      <section id="my-work-{{ group_id }}" class="my-work-group" aria-labelledby="my-work-{{ group_id }}-heading">
         <h2 id="my-work-{{ group_id }}-heading">{{ heading }}</h2>
         {% if tickets %}
         <ul class="app-row-list">
           {% for ticket, project in tickets %}
+          {% set stage = ['BACKLOG', 'SELECTED', 'IN_PROGRESS', 'DONE'].index(ticket.status.value) %}
           <li class="app-row">
-            <a class="app-row-link" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}">{{ ticket.title }}</a>
+            <a class="app-row-link" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"><span class="ticket-number">{{ project.key }}-{{ ticket.ticket_number }}</span> {{ ticket.title }}</a>
             <span class="my-work-ticket-meta">
-              <span>{{ project.key }}</span>
-              <span>{{ ticket.status.value|replace('_', ' ')|capitalize }}</span>
-              <span>{{ ticket.priority.value|capitalize }}</span>
+              <span>{{ status_labels[ticket.status.value] }}</span>
+              {% if ticket.priority.value in ('HIGH', 'URGENT') %}<span class="ticket-priority">{{ ticket.priority.value|capitalize }}</span>{% endif %}
               {% if ticket.due_date %}
               <time datetime="{{ ticket.due_date.isoformat() }}" class="ticket-due-date{% if ticket.status.value != 'DONE' and ticket.due_date < today %} is-overdue{% endif %}">Due {{ ticket.due_date.strftime('%b %-d') }}</time>
               {% endif %}
             </span>
+            <span class="ticket-stage{% if stage == 3 %} is-done{% endif %}" aria-hidden="true">{% for step in range(4) %}<span{% if step < stage %} class="is-passed"{% elif step == stage and stage > 0 %} class="is-current"{% endif %}></span>{% endfor %}</span>
           </li>
           {% endfor %}
         </ul>
@@ -53,7 +51,7 @@
         {% for project in projects %}
         <li data-testid="project-row" class="app-row">
             <a class="app-row-link" href="/projects/{{ project.slug }}">{{ project.name }}</a>
-          <span>{{ roles[project.id]|capitalize }}</span>
+          <span class="project-role">Your role: <span>{{ roles[project.id]|capitalize }}</span></span>
           </li>
         {% endfor %}
       </ul>
@@ -69,7 +67,7 @@
           @click="$event.target === $el && $el.close()">
     <div class="app-dialog-header">
         <h2 id="project-dialog-heading">New project</h2>
-      <button class="app-icon-button" type="button" @click="$refs.projectDialog.close()" aria-label="Close new project dialog">×</button>
+      <button class="app-icon-button" type="button" @click="$refs.projectDialog.close()" aria-label="Close new project dialog"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
       </div>
       {% if error %}<p id="form-error" role="alert" class="form-error">{{ error }}</p>{% endif %}
       <form method="post" action="/projects" class="app-form">

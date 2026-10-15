@@ -3,7 +3,6 @@
 {% block content %}
 <div class="auth-page">
 <section class="auth-card app-surface" aria-labelledby="login-heading">
-  <p class="section-eyebrow">Kanban Flow</p>
   <h1 id="login-heading" class="app-page-title">Sign in</h1>
   {% if error %}<p id="form-error" role="alert" class="form-error">{{ error }}</p>{% endif %}
   <form method="post" action="/login" class="app-form">

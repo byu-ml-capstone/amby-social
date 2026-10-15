@@ -3,7 +3,7 @@
 {% block content %}
 <div class="project-board">
   <header class="project-header">
-    <div><p class="section-eyebrow">Project</p><h1 class="project-title">Project settings</h1><p class="sprint-meta">{{ project.name }}</p>{% include "partials/sprint_selector.html" %}</div>
+    <div><h1 class="project-title">Project settings</h1><p class="sprint-meta">{{ project.name }}</p>{% include "partials/sprint_selector.html" %}</div>
   </header>
   {% include "partials/project_nav.html" %}
   {% if error %}<p class="form-error" role="alert">{{ error }}</p>{% endif %}
@@ -93,7 +93,7 @@
         <p>Mailbox: <strong>{{ gmail_connection.google_email }}</strong></p>
         {% if gmail_connection.label_mapping %}
         <ul class="github-repository-names" aria-label="Gmail labels that create tickets">
-          {% for mapping in gmail_connection.label_mapping.values() %}<li>{{ mapping['name'] }} → {{ mapping['type'].replace('_', ' ')|capitalize }} · {{ mapping['priority']|capitalize }}</li>{% endfor %}
+          {% for mapping in gmail_connection.label_mapping.values() %}<li>{{ mapping['name'] }} → {{ type_labels.get(mapping['type'], mapping['type']) }} · {{ mapping['priority']|capitalize }}</li>{% endfor %}
         </ul>
         {% else %}
         <p>No labels create tickets yet.</p>
@@ -125,7 +125,7 @@
                 @click="$event.target === $el && $el.close()">
           <div class="app-dialog-header">
             <h2 id="gmail-labels-heading">Labels that create tickets</h2>
-            <button class="app-icon-button" type="button" @click="$el.closest('dialog').close()" aria-label="Close Gmail labels dialog">×</button>
+            <button class="app-icon-button" type="button" @click="$el.closest('dialog').close()" aria-label="Close Gmail labels dialog"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
           </div>
           <form class="app-form gmail-labels-form" action="/projects/{{ project.slug }}/settings/integrations/gmail/labels" method="post" data-testid="owner-settings-controls">
             <input type="hidden" name="_csrf" value="{{ csrf_token }}">
@@ -141,7 +141,7 @@
                 <input type="hidden" name="all_label_ids" value="{{ label['id'] }}">
                 <label class="gmail-label-name"><input type="checkbox" x-model="checked" name="label_ids" value="{{ label['id'] }}"{% if current %} checked{% endif %}><span>{{ label['name'] }}</span></label>
                 <div class="gmail-label-mapping" x-show="checked"{% if not current %} x-cloak{% endif %}>
-                  <select name="types" aria-label="Ticket type for {{ label['name'] }}">{% for ticket_type in ticket_types %}<option value="{{ ticket_type.value }}"{% if current.get('type', 'TASK') == ticket_type.value %} selected{% endif %}>{{ ticket_type.value.replace('_', ' ')|capitalize }}</option>{% endfor %}</select>
+                  <select name="types" aria-label="Ticket type for {{ label['name'] }}">{% for ticket_type in ticket_types %}<option value="{{ ticket_type.value }}"{% if current.get('type', 'TASK') == ticket_type.value %} selected{% endif %}>{{ type_labels[ticket_type.value] }}</option>{% endfor %}</select>
                   <select name="priorities" aria-label="Priority for {{ label['name'] }}">{% for priority in priorities %}<option value="{{ priority.value }}"{% if current.get('priority', 'MEDIUM') == priority.value %} selected{% endif %}>{{ priority.value|capitalize }}</option>{% endfor %}</select>
                 </div>
               </div>

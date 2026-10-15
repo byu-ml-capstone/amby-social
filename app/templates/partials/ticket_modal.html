@@ -26,16 +26,13 @@
         <input id="ticket-due-date" type="date" name="due_date">
       </div>
       <div>
-        <label for="ticket-type">Type</label>
+        <label for="ticket-type">Category</label>
         <select id="ticket-type" name="type" required>
-          <option value="STORY">Story</option>
-          <option value="BUG">Bug</option>
-          <option value="DEMO_REQUEST">Demo request</option>
-          <option value="TASK" selected>Task</option>
+          {% for value, label in type_labels.items() %}<option value="{{ value }}"{% if value == 'TASK' %} selected{% endif %}>{{ label }}</option>{% endfor %}
         </select>
       </div>
       <div>
-        <label for="ticket-description">Description</label>
+        <label for="ticket-description">Details</label>
         <textarea id="ticket-description" name="description" rows="4"
                   placeholder="Markdown supported"></textarea>
       </div>

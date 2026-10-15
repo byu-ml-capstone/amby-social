@@ -1,31 +1,24 @@
 {% if detail_drawer %}
-<dialog id="ticket-detail-panel" class="app-dialog ticket-detail-modal sketch-ticket-detail" aria-labelledby="ticket-detail-heading" x-init="$nextTick(() => { $el.showModal(); $el.querySelector('#ticket-detail-heading').focus() })" @cancel="$event.preventDefault(); $el.close()" @close="$dispatch('ticket-drawer-closed'); $el.remove()">
+<dialog id="ticket-detail-panel" class="app-dialog ticket-detail-modal" aria-labelledby="ticket-detail-heading" x-init="$nextTick(() => { $el.showModal(); $el.querySelector('#ticket-detail-heading').focus() })" @cancel="$event.preventDefault(); $el.close()" @close="$dispatch('ticket-drawer-closed'); $el.remove()">
 {% else %}
 <section id="ticket-detail-panel" class="ticket-detail-page" aria-labelledby="ticket-detail-heading">
 {% endif %}
   <div class="ticket-detail-layout">
   <form class="app-form ticket-detail-form" method="post" action="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}" hx-post="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"
         hx-target="#ticket-detail-root" hx-swap="innerHTML">
+    {% set stage = ['BACKLOG', 'SELECTED', 'IN_PROGRESS', 'DONE'].index(form_values['status']) if form_values['status'] in ['BACKLOG', 'SELECTED', 'IN_PROGRESS', 'DONE'] else -1 %}
     <div class="ticket-detail-header">
-      <div class="ticket-detail-heading">
-        <h2 id="ticket-detail-heading" tabindex="-1">{{ ticket_reference|default('#' ~ ticket.ticket_number, true) }} · Work item</h2>
-        <div class="ticket-copy-row">
-          <code>{{ ticket_reference }}</code>
-          <button type="button" class="app-ghost-button" data-copy-text="{{ ticket_reference }}">Copy reference</button>
-          <span class="ticket-copy-status" role="status" aria-live="polite"></span>
-        </div>
+      <div class="ticket-detail-heading ticket-copy-row">
+        <h2 id="ticket-detail-heading" tabindex="-1">{{ ticket_reference|default('#' ~ ticket.ticket_number, true) }}<span class="sr-only"> · Work item</span></h2>
+        {% if form_values['type'] %}<span class="ticket-type">{{ (type_labels|default({})).get(form_values['type'], form_values['type']) }}</span>{% endif %}
+        <button type="button" class="app-ghost-button" data-copy-text="{{ ticket_reference }}">Copy reference</button>
+        <span class="ticket-copy-status" role="status" aria-live="polite"></span>
       </div>
       {% if detail_drawer %}
       <button type="button" class="app-ghost-button" @click="$el.closest('dialog').close()">Close</button>
       {% else %}
       <a class="app-ghost-button" href="/projects/{{ project.slug }}">Back to board</a>
       {% endif %}
-    </div>
-    <div class="ticket-copy-row ticket-branch-command">
-      <span>Branch command</span>
-      <code>{{ branch_command }}</code>
-      <button type="button" class="app-ghost-button" data-copy-text="{{ branch_command }}">Copy command</button>
-      <span class="ticket-copy-status" role="status" aria-live="polite"></span>
     </div>
     {% if development_rows %}
     <div class="ticket-development-badges" aria-label="Linked development status">
@@ -42,13 +35,17 @@
     {% set status_values = columns | map(attribute='value') | list %}
     {% set member_ids = members | map(attribute='id') | list %}
     {% set sprint_ids = sprints | map(attribute='id') | list %}
-    {% set type_labels = {'STORY': 'Initiative', 'BUG': 'Issue', 'DEMO_REQUEST': 'Review request', 'TASK': 'Task'} %}
-    {% set status_labels = {'BACKLOG': 'Not planned', 'SELECTED': 'Ready', 'IN_PROGRESS': 'In progress', 'DONE': 'Done'} %}
     <input type="hidden" name="_csrf" value="{{ csrf_token }}">
-    <div>
-      <label for="detail-title">Work item title</label>
+    <div class="ticket-title-field">
+      <label class="sr-only" for="detail-title">Work item title</label>
       <input id="detail-title" name="title" value="{{ form_values['title'] }}" required>
     </div>
+    {% if stage >= 0 %}
+    <p class="sr-only">Stage: {{ (status_labels|default({})).get(form_values['status'], form_values['status']) }}</p>
+    <div class="my-request-steps ticket-detail-steps{% if stage == 3 %} is-done{% endif %}" aria-hidden="true">
+      {% for value in ['BACKLOG', 'SELECTED', 'IN_PROGRESS', 'DONE'] %}<span{% if loop.index0 < stage %} class="is-passed"{% elif loop.index0 == stage %} class="is-current"{% endif %}>{{ (status_labels|default({})).get(value, value) }}</span>{% endfor %}
+    </div>
+    {% endif %}
     <div class="ticket-description-editor" data-description-editor>
       <div class="ticket-description-header">
         <span class="ticket-description-label">Details</span>
@@ -117,9 +114,17 @@
     </div>
     <div><label for="detail-resolution-notes">Outcome notes</label><textarea id="detail-resolution-notes" name="resolution_notes" rows="3">{{ form_values['resolution_notes'] }}</textarea></div>
     <div><label for="detail-blocked-reason">Blocked reason</label><textarea id="detail-blocked-reason" name="blocked_reason" rows="2" maxlength="500" placeholder="Leave blank when work is not blocked">{{ form_values['blocked_reason'] }}</textarea></div>
-    <button class="app-primary-button">Save changes</button>
+    <div class="ticket-detail-actions">
+      <button class="app-primary-button">Save changes</button>
+    </div>
     <section class="ticket-development" aria-labelledby="ticket-development-heading">
       <h3 id="ticket-development-heading">Development</h3>
+      <div class="ticket-copy-row ticket-branch-command">
+        <span>Branch command</span>
+        <code>{{ branch_command }}</code>
+        <button type="button" class="app-ghost-button" data-copy-text="{{ branch_command }}">Copy command</button>
+        <span class="ticket-copy-status" role="status" aria-live="polite"></span>
+      </div>
       <div class="ticket-development-list">
         {% for row in development_rows %}
         <article class="ticket-development-row">

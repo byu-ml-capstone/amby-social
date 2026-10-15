@@ -6,10 +6,9 @@
 <div class="project-board">
   <header class="project-header">
     <div>
-      <p class="section-eyebrow">Closed sprint</p>
-      <h1 class="project-title">{{ sprint.name }}</h1>
-      {% include "partials/sprint_selector.html" %}
+      <h1 class="project-title">{{ sprint.name }} <span class="sprint-status">Closed</span></h1>
       <p class="sprint-meta">{{ sprint.start_date.strftime('%b %-d') }} – {{ sprint.end_date.strftime('%b %-d, %Y') }}{% if sprint.goal %} · {{ sprint.goal }}{% endif %}</p>
+      {% include "partials/sprint_selector.html" %}
     </div>
   </header>
 
@@ -41,7 +40,8 @@
     {% endif %}{% endfor %}
     {% else %}
     {% if report.generated_by is none %}
-    <p class="form-status">No draft yet. Ask your MCP client (Claude Code or Claude Desktop) to “draft the sprint report for {{ sprint.name }}”. It reads <code>get_sprint_report_payload</code> and saves with <code>save_sprint_report</code>; then review and edit it here.</p>
+    <p class="form-status">No draft yet. Ask your AI assistant (Claude Code or Claude Desktop) to “draft the sprint report for {{ sprint.name }}”, then review and edit it here. <a href="/settings#mcp-setup-heading">Connect your assistant</a></p>
+    <p class="sprint-meta">The assistant reads <code>get_sprint_report_payload</code> and saves with <code>save_sprint_report</code>.</p>
     {% else %}
     <p class="form-status">Draft · {{ 'AI-generated via MCP' if report.generated_by.value == 'MCP_CLIENT' else 'Written by hand' }}</p>
     {% endif %}
@@ -62,11 +62,11 @@
   </section>
 
   <section class="backlog-list sprint-history-tickets" aria-labelledby="history-tickets-heading">
-    <div class="backlog-list-header"><p class="section-eyebrow">Snapshot</p><h2 id="history-tickets-heading">Tickets at close</h2></div>
+    <div class="backlog-list-header"><h2 id="history-tickets-heading">Tickets at close</h2></div>
     {% for entry, ticket in history %}
     <article class="backlog-ticket">
-      <a class="app-row-link" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}">#{{ ticket.ticket_number }} {{ ticket.title }}</a>
-      <p class="sprint-meta">{{ entry.status_at_close.value|replace('_', ' ')|capitalize }} · {{ entry.story_points_at_close or 0 }} pts at close · {% if entry.was_completed %}Completed{% else %}Rollover{% endif %}</p>
+      <a class="app-row-link" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"><span class="ticket-number">{{ project.key }}-{{ ticket.ticket_number }}</span> {{ ticket.title }}</a>
+      <p class="sprint-meta">{{ status_labels[entry.status_at_close.value] }} · {{ entry.story_points_at_close or 0 }} pts at close · {% if entry.was_completed %}Completed{% else %}Rollover{% endif %}</p>
     </article>
     {% else %}
     <p class="app-empty-state">No tickets at close.</p>

@@ -8,10 +8,9 @@
     <div>
       <h1 class="project-title">{{ project.name }}</h1>
       {% if current_sprint %}
-      <p class="sprint-title">{{ current_sprint.name }} <span class="sprint-status">{{ current_sprint.status.value|capitalize }}</span></p>
+      {% if not sprint_options %}<p class="sprint-title">{{ current_sprint.name }} <span class="sprint-status">{{ current_sprint.status.value|capitalize }}</span></p>{% endif %}
       <p class="sprint-meta">{{ current_sprint.start_date.strftime('%b %-d') }} – {{ current_sprint.end_date.strftime('%b %-d, %Y') }}{% if current_sprint.goal %} · {{ current_sprint.goal }}{% endif %}</p>
       {% else %}
-      <p class="sprint-title" aria-hidden="true">&nbsp;</p>
       <p class="sprint-meta">Sprint History</p>
       {% endif %}
       {% include "partials/sprint_selector.html" %}
@@ -21,8 +20,8 @@
   {% include "partials/project_nav.html" %}
 
   <section class="sprint-history app-surface" aria-labelledby="history-heading">
-    <div class="sprint-history-header"><p class="section-eyebrow">Archive</p><h2 id="history-heading">Closed sprints</h2></div>
-    {% if velocity_points %}<p class="sprint-meta">Velocity trend: {{ velocity_points|join(' → ') }} pts</p>{% endif %}
+    <div class="sprint-history-header"><h2 id="history-heading">Closed sprints</h2></div>
+    {% if velocity_points %}<p class="sprint-meta sprint-history-velocity">Velocity trend: {{ velocity_points|join(' → ') }} pts</p>{% endif %}
     {% for summary in summaries %}
     <article class="sprint-history-row">
       <div>

@@ -6,10 +6,9 @@
     <div>
       <h1 class="project-title">{{ project.name }}</h1>
       {% if current_sprint %}
-      <p class="sprint-title">{{ current_sprint.name }} <span class="sprint-status">{{ current_sprint.status.value|capitalize }}</span></p>
+      {% if not sprint_options %}<p class="sprint-title">{{ current_sprint.name }} <span class="sprint-status">{{ current_sprint.status.value|capitalize }}</span></p>{% endif %}
       <p class="sprint-meta">{{ current_sprint.start_date.strftime('%b %-d') }} – {{ current_sprint.end_date.strftime('%b %-d, %Y') }}{% if current_sprint.goal %} · {{ current_sprint.goal }}{% endif %}</p>
       {% else %}
-      <p class="sprint-title" aria-hidden="true">&nbsp;</p>
       <p class="sprint-meta">Backlog</p>
       {% endif %}
       {% include "partials/sprint_selector.html" %}
@@ -29,8 +28,7 @@
   {% if planning_sprint %}
   <section class="backlog-planning-sprint" aria-labelledby="planning-heading">
     <div>
-      <p class="section-eyebrow">Planning sprint</p>
-      <h2 id="planning-heading">{{ planning_sprint.name }}</h2>
+      <h2 id="planning-heading">{{ planning_sprint.name }} <span class="sprint-status">Planning</span></h2>
       <p class="sprint-meta">{{ planning_sprint.start_date.strftime('%b %-d') }} – {{ planning_sprint.end_date.strftime('%b %-d, %Y') }}{% if planning_sprint.goal %} · {{ planning_sprint.goal }}{% endif %}</p>
       <p class="sprint-meta">{{ planning_ticket_count }} ticket{{ '' if planning_ticket_count == 1 else 's' }} · {{ planning_points }} point{{ '' if planning_points == 1 else 's' }} · {{ planning_unestimated_count }} unestimated</p>
       {% if recent_velocity is not none and planning_points > recent_velocity %}<p class="form-error">Above recent velocity: {{ planning_points }} planned / {{ recent_velocity }} average</p>{% endif %}
@@ -42,7 +40,7 @@
     <div class="backlog-list-header"><h2 id="planning-tickets-heading">Committed work</h2></div>
     {% for ticket in planning_tickets %}
     <div class="backlog-ticket">
-      <a class="backlog-ticket-open" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"><span class="ticket-number">#{{ ticket.ticket_number }}</span> {{ ticket.title }}</a>
+      <a class="backlog-ticket-open" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"><span class="ticket-number">{{ project.key }}-{{ ticket.ticket_number }}</span> {{ ticket.title }}</a>
       <span class="sprint-meta">{{ ticket.story_points ~ ' pts' if ticket.story_points is not none else 'Unestimated' }}</span>
     </div>
     {% endfor %}
@@ -55,7 +53,7 @@
     <div class="backlog-list-header"><div><h2 id="backlog-heading">Unscheduled tickets</h2></div></div>
     <form class="board-filters" method="get" aria-label="Backlog filters">
       <input class="app-input" type="search" name="q" value="{{ q }}" placeholder="Search titles">
-      <select name="type"><option value="">All types</option>{% for value in ticket_types %}<option value="{{ value.value }}"{% if type_filter == value %} selected{% endif %}>{{ value.value|replace('_', ' ')|title }}</option>{% endfor %}</select>
+      <select name="type"><option value="">All categories</option>{% for value in ticket_types %}<option value="{{ value.value }}"{% if type_filter == value %} selected{% endif %}>{{ type_labels[value.value] }}</option>{% endfor %}</select>
       <select name="priority"><option value="">All priorities</option>{% for value in priorities %}<option value="{{ value.value }}"{% if priority_filter == value %} selected{% endif %}>{{ value.value|title }}</option>{% endfor %}</select>
       <button class="app-secondary-button">Filter</button>
     </form>
@@ -67,13 +65,13 @@
       {% for ticket in tickets %}
       <div id="ticket-{{ ticket.id }}" class="backlog-ticket">
         {% if role == 'OWNER' and planning_sprint %}
-        <input type="checkbox" name="ticket_ids" value="{{ ticket.id }}" aria-label="Select ticket #{{ ticket.ticket_number }}">
+        <input type="checkbox" name="ticket_ids" value="{{ ticket.id }}" aria-label="Select ticket {{ project.key }}-{{ ticket.ticket_number }}">
         {% endif %}
-        <button type="button" class="backlog-ticket-open" data-ticket-edit @click="ticketOpener = '{{ ticket.id }}'" hx-get="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}" hx-target="#ticket-detail-root" hx-swap="innerHTML"><span class="ticket-number">#{{ ticket.ticket_number }}</span> {{ ticket.title }}</button>
+        <button type="button" class="backlog-ticket-open" data-ticket-edit @click="ticketOpener = '{{ ticket.id }}'" hx-get="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}" hx-target="#ticket-detail-root" hx-swap="innerHTML"><span class="ticket-number">{{ project.key }}-{{ ticket.ticket_number }}</span> {{ ticket.title }}</button>
         {% if role == 'OWNER' %}
-        <form action="/projects/{{ project.slug }}/backlog/{{ ticket.id }}/move" method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="direction" value="up"><button class="app-icon-button" aria-label="Move ticket #{{ ticket.ticket_number }} up">↑</button></form>
-        <form action="/projects/{{ project.slug }}/backlog/{{ ticket.id }}/move" method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="direction" value="down"><button class="app-icon-button" aria-label="Move ticket #{{ ticket.ticket_number }} down">↓</button></form>
-        <button type="button" class="app-icon-button" aria-label="Delete ticket #{{ ticket.ticket_number }}" title="Delete ticket" hx-post="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/delete" hx-vals='{"_csrf": "{{ csrf_token }}"}' hx-target="#backlog-feedback" hx-confirm="Delete this ticket?">
+        <form action="/projects/{{ project.slug }}/backlog/{{ ticket.id }}/move" method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="direction" value="up"><button class="app-icon-button" aria-label="Move ticket {{ project.key }}-{{ ticket.ticket_number }} up"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form>
+        <form action="/projects/{{ project.slug }}/backlog/{{ ticket.id }}/move" method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><input type="hidden" name="direction" value="down"><button class="app-icon-button" aria-label="Move ticket {{ project.key }}-{{ ticket.ticket_number }} down"><svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button></form>
+        <button type="button" class="app-icon-button" aria-label="Delete ticket {{ project.key }}-{{ ticket.ticket_number }}" title="Delete ticket" hx-post="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/delete" hx-vals='{"_csrf": "{{ csrf_token }}"}' hx-target="#backlog-feedback" hx-confirm="Delete this ticket?">
           <svg aria-hidden="true" focusable="false" viewBox="0 0 24 24"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zm3.46-7.12 1.41-1.41L12 11.59l1.12-1.12 1.41 1.41L13.41 13l1.12 1.12-1.41 1.41L12 14.41l-1.12 1.12-1.41-1.41L10.59 13l-1.13-1.12zM15.5 4l-1-1h-5l-1 1H5v2h14V4z"/></svg>
         </button>
         {% endif %}

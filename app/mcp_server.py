@@ -252,7 +252,31 @@ async def create_ticket(
     assignee_id: str | None = None,
     due_date: date | None = None,
 ) -> dict[str, object]:
-    """Create a ticket in a project."""
+    """Create a ticket in a project. Call list_tickets first; skip if a matching ticket exists.
+
+    title: imperative and specific, under 60 chars (e.g. "Show due date on board cards"),
+    no type prefixes like "[BUG]".
+
+    description: markdown with these sections in this order; omit no section, write "None" if empty.
+
+    ## Background
+    Why this matters and who is affected, 1-3 sentences.
+
+    ## Goal
+    The outcome when done, 1-2 sentences.
+
+    ## Acceptance criteria
+    - Observable, testable statements, one per bullet.
+
+    ## Out of scope
+    - What this ticket deliberately does not cover.
+
+    For type=BUG, replace Goal with "## Steps to reproduce" (numbered list),
+    "## Expected", and "## Actual"; keep the other sections.
+
+    priority: URGENT only for outages or data loss, HIGH for blocking work, else MEDIUM or LOW.
+    story_points: leave null unless the user gave an estimate.
+    """
     return await _tool_request(
         "POST",
         "/api/v1/tickets",

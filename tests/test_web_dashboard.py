@@ -144,13 +144,16 @@ def test_dashboard_groups_only_visible_assigned_work(
     )
 
 
-def test_dashboard_shows_empty_my_work_state(client, make_user, login_as):
+def test_dashboard_keeps_empty_work_groups_without_a_duplicate_empty_message(
+    client, make_user, login_as
+):
     user = make_user(email="ada@example.com")
     login_as(user.email)
 
     page = client.get("/dashboard").text
 
-    assert "No assigned work." in page
+    assert "No assigned work." not in page
+    assert page.count("No tickets.") == 4
 
 
 def test_invalid_project_submission_keeps_my_work_visible(

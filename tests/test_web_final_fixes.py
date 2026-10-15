@@ -405,7 +405,7 @@ def test_integration_controls_keep_minimum_touch_target(client):
         "}", 1
     )[0]
 
-    assert "min-height: 40px" in controls
+    assert "min-height: 44px" in controls
 
 
 def test_project_sprint_selector_opens_open_boards_and_closed_history_for_members(

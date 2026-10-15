@@ -1,3 +1,4 @@
+import pytest
 from sqlmodel import select
 
 from app.auth import SESSION_COOKIE, make_csrf_token
@@ -60,7 +61,7 @@ def test_unknown_email_login_still_runs_verify_password(client, monkeypatch):
     # and a non-existent account isn't distinguishable from a wrong password by timing. This
     # asserts the behaviour (verify_password is actually invoked, against DUMMY_HASH) rather
     # than the wall-clock, which HTTP-level timing is too noisy to assert reliably.
-    import app.routers.web as web
+    import app.routers.web_auth as web
 
     calls = []
     original_verify_password = web.verify_password
@@ -184,3 +185,44 @@ def test_markdown_filter_is_registered_on_the_templates_environment_and_renders(
     # template would use it (e.g. `{{ ticket.description | markdown | safe }}`).
     rendered = templates.env.from_string("{{ '**bold**' | markdown | safe }}").render()
     assert "<strong>bold</strong>" in rendered
+
+
+BROWSER_ACCEPT = {"Accept": "text/html,application/xhtml+xml,*/*;q=0.8"}
+
+
+@pytest.mark.parametrize("page", ["backlog", "list", "sprints", "settings", "tickets/1"])
+def test_anonymous_page_visit_redirects_to_login(client, make_user, make_project, page):
+    project = make_project(make_user(email="ada@example.com"))
+
+    response = client.get(
+        f"/projects/{project.slug}/{page}", headers=BROWSER_ACCEPT, follow_redirects=False
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/login"
+
+
+def test_anonymous_htmx_request_asks_htmx_to_redirect(client, make_user, make_project):
+    project = make_project(make_user(email="ada@example.com"))
+
+    response = client.get(
+        f"/projects/{project.slug}/tickets/1",
+        headers={**BROWSER_ACCEPT, "HX-Request": "true"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 401
+    assert response.headers["HX-Redirect"] == "/login"
+
+
+@pytest.mark.parametrize(
+    ("path", "headers"),
+    [
+        ("/api/v1/projects", BROWSER_ACCEPT),  # API stays JSON even from a browser
+        ("/projects/x/backlog", {"Accept": "image/*"}),  # e.g. an <img> fetch
+    ],
+)
+def test_non_page_anonymous_requests_stay_401(client, path, headers):
+    response = client.get(path, headers=headers, follow_redirects=False)
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Not authenticated"}
