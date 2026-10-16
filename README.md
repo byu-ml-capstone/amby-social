@@ -4,6 +4,16 @@ Engineering workflow tracker: accounts, projects, membership, tickets, a Kanban
 board, sprints with velocity, chat notifications, GitHub pull-request sync, an
 MCP server, and AI-drafted sprint reports. Built with FastAPI, SQLModel, and SQLite.
 
+## Environments
+
+| | URL | Deploys from |
+|---|---|---|
+| Production | https://amby-social.ml-capstone.cs.byu.edu | `main` |
+| Staging | https://amby-social-staging.ml-capstone.cs.byu.edu | `staging` |
+
+Both need the CS VPN. Work on a branch, open a PR into `staging`, then promote
+`staging` → `main` with a PR. Merges that change code deploy automatically.
+
 ## Prerequisites
 
 - Docker and Docker Compose (for the one-command run), **or**
