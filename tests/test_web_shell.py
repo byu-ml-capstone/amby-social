@@ -1,4 +1,9 @@
+from datetime import date
 from pathlib import Path
+
+from sqlmodel import Session, select
+
+from app.models import Sprint, SprintStatus
 
 
 def test_signed_in_shell_has_project_sidebar(client, make_user, make_project, login_as):
@@ -12,6 +17,74 @@ def test_signed_in_shell_has_project_sidebar(client, make_user, make_project, lo
     assert f'href="/projects/{project.slug}"' in page.text
     assert 'href="/static/app.css?v=' in page.text
     assert 'href="#main-content">Skip to main content</a>' in page.text
+
+
+def test_shell_groups_statuses_and_preserves_canonical_tie_order(
+    client, engine, make_user, make_project, login_as
+):
+    owner = make_user(email="order@example.com")
+    project = make_project(owner)
+    with Session(engine) as session:
+        for generated in session.exec(select(Sprint).where(Sprint.project_id == project.id)).all():
+            session.delete(generated)
+        rows = [
+            Sprint(
+                id="planning-b",
+                project_id=project.id,
+                name="Planning B",
+                goal="B",
+                status=SprintStatus.PLANNING,
+                start_date=date(2026, 9, 21),
+                end_date=date(2026, 10, 4),
+            ),
+            Sprint(
+                id="closed-a",
+                project_id=project.id,
+                name="Closed A",
+                goal="A",
+                status=SprintStatus.CLOSED,
+                start_date=date(2026, 9, 21),
+                end_date=date(2026, 10, 4),
+            ),
+            Sprint(
+                id="planning-a",
+                project_id=project.id,
+                name="Planning A",
+                goal="A",
+                status=SprintStatus.PLANNING,
+                start_date=date(2026, 9, 21),
+                end_date=date(2026, 10, 4),
+            ),
+            Sprint(
+                id="active-z",
+                project_id=project.id,
+                name="Active Z",
+                goal="Z",
+                status=SprintStatus.ACTIVE,
+                start_date=date(2026, 10, 5),
+                end_date=date(2026, 10, 18),
+            ),
+        ]
+        session.add_all(rows)
+        session.commit()
+    login_as(owner.email)
+
+    page = client.get(f"/projects/{project.slug}/backlog").text
+
+    selector = page.split('<select id="sprint-selector"', 1)[1].split("</select>", 1)[0]
+    names = ["Active Z", "Planning A", "Planning B", "Closed A"]
+    assert [selector.index(name) for name in names] == sorted(
+        selector.index(name) for name in names
+    )
+    assert "Oct 5 – Oct 18, 2026 · Z" in page.split('<div class="sprint-selector">', 1)[0]
+
+    with Session(engine) as session:
+        active = session.get(Sprint, "active-z")
+        active.status = SprintStatus.CLOSED
+        session.add(active)
+        session.commit()
+    without_active = client.get(f"/projects/{project.slug}/backlog").text
+    assert "Sep 21 – Oct 4, 2026 · A" in without_active.split('<div class="sprint-selector">', 1)[0]
 
 
 def test_app_stylesheet_is_served(client):

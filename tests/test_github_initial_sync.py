@@ -40,9 +40,7 @@ class FakeGitHub:
         return []
 
 
-def test_initial_sync_imports_only_linked_open_pull_requests(
-    session, github_sync_world
-):
+def test_initial_sync_imports_only_linked_open_pull_requests(session, github_sync_world):
     github = FakeGitHub()
     count = sync_open_pull_requests(session, github_sync_world.connection, github)
     session.commit()

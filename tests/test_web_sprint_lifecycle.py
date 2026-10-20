@@ -19,6 +19,11 @@ def lifecycle_world(make_user, make_project, add_member, engine):
     add_member(project, member)
     add_member(start_project, member)
     with Session(engine) as session:
+        for generated in session.exec(
+            select(Sprint).where(Sprint.project_id.in_([project.id, start_project.id]))
+        ).all():
+            session.delete(generated)
+        session.flush()
         active = Sprint(
             project_id=project.id,
             name="Sprint 1",
@@ -160,14 +165,12 @@ def test_close_preview_shows_totals_destination_and_accessible_dialog(
     )
 
     assert response.status_code == 200
-    for text in ("3 completed points", "2 unfinished tickets", "Sprint 2"):
+    for text in ("3 completed points", "2 unfinished tickets", "earliest planned sprint"):
         assert text in response.text
-    assert "<dialog" in response.text
     assert "autofocus" in response.text
-    assert "@submit=\"$el.querySelector('[type=submit]').disabled = true\"" in response.text
 
 
-def test_close_preview_explains_how_to_create_a_rollover_destination(
+def test_close_preview_explains_automatic_rollover_destination(
     client, lifecycle_world, engine, login_as
 ):
     with Session(engine) as session:
@@ -182,12 +185,10 @@ def test_close_preview_explains_how_to_create_a_rollover_destination(
     )
 
     assert response.status_code == 200
-    assert "Create a planning sprint from Backlog before closing this sprint." in response.text
+    assert "the next sprint will be created automatically" in response.text
 
 
-def test_close_requires_a_planning_destination_without_mutation(
-    client, lifecycle_world, engine, login_as
-):
+def test_close_without_a_destination_closes_atomically(client, lifecycle_world, engine, login_as):
     login_as(lifecycle_world.owner.email)
 
     response = client.post(
@@ -195,10 +196,9 @@ def test_close_requires_a_planning_destination_without_mutation(
         data={"_csrf": make_csrf_token(lifecycle_world.owner.id)},
     )
 
-    assert response.status_code == 422
-    assert "Select a planning sprint" in response.text
+    assert response.status_code == 200
     with Session(engine) as session:
-        assert session.get(Sprint, lifecycle_world.active.id).status is SprintStatus.ACTIVE
+        assert session.get(Sprint, lifecycle_world.active.id).status is SprintStatus.CLOSED
 
 
 def test_htmx_close_error_fragment_swaps_on_the_persistent_dialog_host(
@@ -219,16 +219,11 @@ def test_htmx_close_error_fragment_swaps_on_the_persistent_dialog_host(
         headers={"HX-Request": "true"},
     )
 
-    assert response.status_code == 422
-    assert "@htmx:before-swap" not in response.text
-    assert "@htmx:response-error" not in response.text
-    assert (
-        "x-init=\"$nextTick(() => { $el.showModal(); $el.querySelector('h2').focus() })\""
-        in response.text
-    )
+    assert response.status_code == 204
+    assert response.headers["HX-Redirect"] == f"/projects/{lifecycle_world.project.slug}"
 
 
-def test_close_rejects_an_unknown_rollover_destination(client, lifecycle_world, engine, login_as):
+def test_close_ignores_removed_web_destination_field(client, lifecycle_world, engine, login_as):
     login_as(lifecycle_world.owner.email)
 
     response = client.post(
@@ -239,10 +234,9 @@ def test_close_rejects_an_unknown_rollover_destination(client, lifecycle_world, 
         },
     )
 
-    assert response.status_code == 422
-    assert "Select a planning sprint" in response.text
+    assert response.status_code == 200
     with Session(engine) as session:
-        assert session.get(Sprint, lifecycle_world.active.id).status is SprintStatus.ACTIVE
+        assert session.get(Sprint, lifecycle_world.active.id).status is SprintStatus.CLOSED
 
 
 def test_owner_closes_sprint_and_rolls_unfinished_tickets_forward(

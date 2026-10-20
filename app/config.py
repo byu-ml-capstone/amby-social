@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     google_redirect_uri: str | None = None
     token_encryption_key: str | None = None
     attachments_dir: str = "data/attachments"
+    sprint_name_pattern: str = "Sprint {number:02d}"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

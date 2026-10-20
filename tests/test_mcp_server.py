@@ -231,9 +231,17 @@ async def test_create_project_delegates_to_the_api(monkeypatch):
     monkeypatch.setattr(mcp_server, "api_request", fake_request)
 
     async with Client(mcp) as client:
-        result = await client.call_tool("create_project", {"name": "MCP Check"})
+        result = await client.call_tool(
+            "create_project", {"name": "MCP Check", "start_date": "2026-09-21"}
+        )
 
-    assert calls == [("POST", "/api/v1/projects", {"name": "MCP Check"})]
+    assert calls == [
+        (
+            "POST",
+            "/api/v1/projects",
+            {"name": "MCP Check", "start_date": "2026-09-21"},
+        )
+    ]
     assert result.structured_content["slug"] == "mcp-check"
 
 
@@ -397,21 +405,15 @@ async def test_sprint_tools_expose_typed_input_schemas():
         "remove_project_member",
     }
     assert all(tool.description for tool in tools.values())
-    assert tools["create_project"].input_schema["required"] == ["name"]
+    assert tools["create_project"].input_schema["required"] == ["name", "start_date"]
+    assert tools["create_project"].input_schema["properties"]["start_date"]["format"] == "date"
     assert tools["list_sprints"].input_schema["required"] == ["slug"]
-    assert tools["create_sprint"].input_schema["required"] == [
-        "slug",
-        "name",
-        "goal",
-        "start_date",
-        "end_date",
-    ]
-    assert tools["create_sprint"].input_schema["properties"]["start_date"]["format"] == "date"
-    assert tools["create_sprint"].input_schema["properties"]["end_date"]["format"] == "date"
+    assert tools["create_sprint"].input_schema["required"] == ["slug"]
+    assert tools["create_sprint"].input_schema["properties"]["count"]["default"] == 1
     assert tools["start_sprint"].input_schema["required"] == ["sprint_id"]
-    assert tools["close_sprint"].input_schema["required"] == ["sprint_id", "next_sprint_id"]
+    assert tools["close_sprint"].input_schema["required"] == ["sprint_id"]
     assert tools["get_sprint"].input_schema["required"] == ["sprint_id"]
-    assert tools["update_sprint"].input_schema["required"] == ["sprint_id"]
+    assert tools["update_sprint"].input_schema["required"] == ["sprint_id", "goal"]
     assert tools["get_sprint_history"].input_schema["required"] == ["sprint_id"]
     assert tools["create_ticket"].input_schema["required"] == ["slug", "title"]
     assert (
@@ -454,41 +456,25 @@ async def test_sprint_tools_delegate_to_the_api_and_limit_list_fields(monkeypatc
                     "closed_at": None,
                 }
             ]
-        return {"id": "sprint-1", "status": "PLANNING"}
+        return (
+            [{"id": "sprint-1", "status": "PLANNING"}]
+            if method == "POST"
+            else {"id": "sprint-1", "status": "PLANNING"}
+        )
 
     monkeypatch.setattr(mcp_server, "api_request", fake_request)
 
     async with Client(mcp) as client:
         listed = await client.call_tool("list_sprints", {"slug": "demo"})
-        await client.call_tool(
-            "create_sprint",
-            {
-                "slug": "demo",
-                "name": "Sprint 2",
-                "goal": "Ship reports",
-                "start_date": "2026-09-28",
-                "end_date": "2026-10-05",
-            },
-        )
+        await client.call_tool("create_sprint", {"slug": "demo", "count": 2})
         await client.call_tool("start_sprint", {"sprint_id": "sprint-1"})
-        await client.call_tool(
-            "close_sprint", {"sprint_id": "sprint-1", "next_sprint_id": "sprint-2"}
-        )
+        await client.call_tool("close_sprint", {"sprint_id": "sprint-1"})
 
     assert calls == [
         ("GET", "/api/v1/projects/demo/sprints", None),
-        (
-            "POST",
-            "/api/v1/projects/demo/sprints",
-            {
-                "name": "Sprint 2",
-                "goal": "Ship reports",
-                "start_date": "2026-09-28",
-                "end_date": "2026-10-05",
-            },
-        ),
+        ("POST", "/api/v1/projects/demo/sprints", {"count": 2}),
         ("PATCH", "/api/v1/sprints/sprint-1", {"status": "ACTIVE"}),
-        ("POST", "/api/v1/sprints/sprint-1/close", {"next_sprint_id": "sprint-2"}),
+        ("POST", "/api/v1/sprints/sprint-1/close", {}),
     ]
     assert listed.is_error is False
     assert listed.structured_content == {
@@ -513,40 +499,24 @@ async def test_remaining_sprint_tools_delegate_to_the_api(monkeypatch):
 
     async def fake_request(method, path, json=None):
         calls.append((method, path, json))
-        return {}
+        return [] if path.endswith("/history") else {}
 
     monkeypatch.setattr(mcp_server, "api_request", fake_request)
 
     async with Client(mcp) as client:
         await client.call_tool("get_sprint", {"sprint_id": "sprint-1"})
-        await client.call_tool(
-            "update_sprint",
-            {
-                "sprint_id": "sprint-1",
-                "name": "Sprint 2",
-                "start_date": "2026-10-06",
-                "end_date": "2026-10-13",
-            },
-        )
+        await client.call_tool("update_sprint", {"sprint_id": "sprint-1", "goal": "Ship reports"})
         await client.call_tool("get_sprint_history", {"sprint_id": "sprint-1"})
 
     assert calls == [
         ("GET", "/api/v1/sprints/sprint-1", None),
-        (
-            "PATCH",
-            "/api/v1/sprints/sprint-1",
-            {
-                "name": "Sprint 2",
-                "start_date": "2026-10-06",
-                "end_date": "2026-10-13",
-            },
-        ),
+        ("PATCH", "/api/v1/sprints/sprint-1", {"goal": "Ship reports"}),
         ("GET", "/api/v1/sprints/sprint-1/history", None),
     ]
 
 
 @pytest.mark.anyio
-async def test_create_sprint_rejects_non_iso_dates_without_api_call(monkeypatch):
+async def test_create_sprint_rejects_invalid_count_without_api_call(monkeypatch):
     calls = []
 
     async def fake_request(method, path, json=None):
@@ -555,16 +525,7 @@ async def test_create_sprint_rejects_non_iso_dates_without_api_call(monkeypatch)
     monkeypatch.setattr(mcp_server, "api_request", fake_request)
 
     async with Client(mcp) as client:
-        result = await client.call_tool(
-            "create_sprint",
-            {
-                "slug": "demo",
-                "name": "Sprint 2",
-                "goal": "Ship reports",
-                "start_date": "not-a-date",
-                "end_date": "2026-10-05",
-            },
-        )
+        result = await client.call_tool("create_sprint", {"slug": "demo", "count": "many"})
 
     assert result.is_error is True
     assert calls == []
@@ -593,42 +554,27 @@ async def test_sprint_tools_quote_user_supplied_path_segments(monkeypatch):
     calls = []
     slug = "demo?next=/api/v1/tokens#\\%"
     sprint_id = "sprint?next=/api/v1/tokens#\\%"
-    next_sprint_id = "next?kept/raw#in%body\\"
 
     async def fake_request(method, path, json=None):
         calls.append((method, path, json))
-        return [] if method == "GET" else {"id": "sprint-1"}
+        if method == "GET" or path.endswith("/sprints"):
+            return []
+        return {"id": "sprint-1"}
 
     monkeypatch.setattr(mcp_server, "api_request", fake_request)
 
     async with Client(mcp) as client:
         await client.call_tool("list_sprints", {"slug": slug})
-        await client.call_tool(
-            "create_sprint",
-            {
-                "slug": slug,
-                "name": "Sprint 2",
-                "goal": "Ship reports",
-                "start_date": "2026-09-28",
-                "end_date": "2026-10-05",
-            },
-        )
+        await client.call_tool("create_sprint", {"slug": slug})
         await client.call_tool("start_sprint", {"sprint_id": sprint_id})
-        await client.call_tool(
-            "close_sprint", {"sprint_id": sprint_id, "next_sprint_id": next_sprint_id}
-        )
+        await client.call_tool("close_sprint", {"sprint_id": sprint_id})
 
     assert calls == [
         ("GET", "/api/v1/projects/demo%3Fnext%3D%2Fapi%2Fv1%2Ftokens%23%5C%25/sprints", None),
         (
             "POST",
             "/api/v1/projects/demo%3Fnext%3D%2Fapi%2Fv1%2Ftokens%23%5C%25/sprints",
-            {
-                "name": "Sprint 2",
-                "goal": "Ship reports",
-                "start_date": "2026-09-28",
-                "end_date": "2026-10-05",
-            },
+            {"count": 1},
         ),
         (
             "PATCH",
@@ -638,7 +584,7 @@ async def test_sprint_tools_quote_user_supplied_path_segments(monkeypatch):
         (
             "POST",
             "/api/v1/sprints/sprint%3Fnext%3D%2Fapi%2Fv1%2Ftokens%23%5C%25/close",
-            {"next_sprint_id": next_sprint_id},
+            {},
         ),
     ]
 
@@ -670,7 +616,9 @@ def test_http_transport_uses_the_callers_token_and_scope(client, make_user, make
     assert listed.status_code == 200, listed.text
     assert listed.json()["result"]["structuredContent"]["result"][0]["name"] == "HTTP MCP"
 
-    denied = _call_http_tool(client, token, "create_project", {"name": "Nope"})
+    denied = _call_http_tool(
+        client, token, "create_project", {"name": "Nope", "start_date": "2026-09-21"}
+    )
     assert denied.json()["result"]["isError"] is True
     assert "403" in denied.json()["result"]["content"][0]["text"]
 

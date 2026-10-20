@@ -1,14 +1,18 @@
+from datetime import date
+
 from sqlmodel import Session
 
 from app.models import Project
 from app.schemas import ProjectUpdate
 from app.services import create_project, update_project
 
+START = date(2026, 9, 21)
+
 
 def test_project_key_is_stable_and_collision_safe(session, make_user):
     owner = make_user(email="key-owner@example.com")
-    first = create_project(session, "Payment Gateway", owner)
-    second = create_project(session, "Payments Admin", owner)
+    first = create_project(session, "Payment Gateway", START, owner)
+    second = create_project(session, "Payments Admin", START, owner)
 
     update_project(session, first, name="Checkout")
 
@@ -17,7 +21,7 @@ def test_project_key_is_stable_and_collision_safe(session, make_user):
 
 def test_project_keys_are_short_uppercase_ascii_alphanumeric(session, make_user):
     owner = make_user(email="key-format@example.com")
-    project = create_project(session, "!!! Gateway", owner)
+    project = create_project(session, "!!! Gateway", START, owner)
 
     assert project.key == "PRJ"
     assert project.key.isascii() and project.key.isalnum() and project.key.isupper()
@@ -29,7 +33,10 @@ def test_project_key_is_exposed_but_not_updateable(client, make_user, login_as):
     make_user(email="key-api@example.com")
     login_as("key-api@example.com")
 
-    created = client.post("/api/v1/projects", json={"name": "Payment Gateway"})
+    created = client.post(
+        "/api/v1/projects",
+        json={"name": "Payment Gateway", "start_date": START.isoformat()},
+    )
     updated = client.patch(
         "/api/v1/projects/payment-gateway",
         json={"name": "Checkout", "key": "NOPE"},
@@ -37,8 +44,7 @@ def test_project_key_is_exposed_but_not_updateable(client, make_user, login_as):
 
     assert created.status_code == 201
     assert created.json()["key"] == "PAY"
-    assert updated.status_code == 200
-    assert updated.json()["key"] == "PAY"
+    assert updated.status_code == 422
     assert "key" not in ProjectUpdate.model_fields
 
 
@@ -74,6 +80,6 @@ def test_project_creation_retries_a_concurrent_key_collision(
 
     monkeypatch.setattr(services, "allocate_project_key", allocate_then_race)
 
-    project = create_project(session, "Payment Gateway", owner)
+    project = create_project(session, "Payment Gateway", START, owner)
 
     assert project.key == "PAY2"

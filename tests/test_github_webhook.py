@@ -133,9 +133,7 @@ def connected_repo(session, make_user, make_project):
     )
     session.add(installation)
     session.flush()
-    session.add(
-        ProjectGitHubConnection(project_id=project.id, installation_id=installation.id)
-    )
+    session.add(ProjectGitHubConnection(project_id=project.id, installation_id=installation.id))
     connection = ProjectGitHubRepository(
         project_id=project.id,
         installation_id=installation.id,
@@ -874,14 +872,17 @@ def test_delivery_unique_conflict_is_treated_as_duplicate(session):
     )
 
     assert claim_github_delivery(session, loser) is False
-    assert len(
-        session.exec(
-            select(IntegrationDelivery).where(
-                IntegrationDelivery.provider == "GITHUB",
-                IntegrationDelivery.delivery_id == "race-delivery",
-            )
-        ).all()
-    ) == 1
+    assert (
+        len(
+            session.exec(
+                select(IntegrationDelivery).where(
+                    IntegrationDelivery.provider == "GITHUB",
+                    IntegrationDelivery.delivery_id == "race-delivery",
+                )
+            ).all()
+        )
+        == 1
+    )
 
 
 def test_delivery_unrelated_integrity_error_is_not_treated_as_duplicate(session):
@@ -931,9 +932,7 @@ def test_delivery_identity_is_provider_scoped(session):
     ) == {"GITHUB", "SLACK"}
 
 
-def test_unexpected_processing_error_rolls_back_delivery(
-    session, connected_repo, monkeypatch
-):
+def test_unexpected_processing_error_rolls_back_delivery(session, connected_repo, monkeypatch):
     import app.github_sync as github_sync
 
     def explode(_session, _connection, _commit):
@@ -960,11 +959,14 @@ def test_unexpected_processing_error_rolls_back_delivery(
             FakeGitHub(),
         )
 
-    assert session.exec(
-        select(IntegrationDelivery).where(
-            IntegrationDelivery.delivery_id == "retryable-delivery"
-        )
-    ).first() is None
+    assert (
+        session.exec(
+            select(IntegrationDelivery).where(
+                IntegrationDelivery.delivery_id == "retryable-delivery"
+            )
+        ).first()
+        is None
+    )
     assert session.exec(select(GitHubArtifact)).all() == []
 
 
