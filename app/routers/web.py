@@ -37,9 +37,7 @@ from app.models import (
     User,
 )
 from app.routers.web_common import COLUMNS, render
-from app.services import (
-    create_project,
-)
+from app.services import create_project, sprint_chronology
 
 router = APIRouter(tags=["web"])
 
@@ -49,6 +47,7 @@ BOARD_TICKETS_PER_COLUMN = 200
 # Hoisted so `Query(...)` isn't called in an argument default (ruff B008).
 _TYPE_FILTER_QUERY = Query(None, alias="type")
 _STATUS_FILTER_QUERY = Query(None, alias="status")
+_START_DATE_FORM = Form("")
 
 
 def _dashboard_context(session: Session, user: User) -> dict:
@@ -113,6 +112,7 @@ def dashboard(
 def create_project_form(
     request: Request,
     name: str = Form(...),
+    start_date: str = _START_DATE_FORM,
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> Response:
@@ -122,10 +122,23 @@ def create_project_form(
     # collision check, and the creator-becomes-OWNER membership insert all
     # live there exactly once.
     try:
-        project = create_project(session, name, user)
+        project_date = date.fromisoformat(start_date) if start_date else date.today()
+        project = create_project(session, name, project_date, user)
+    except ValueError:
+        context = _dashboard_context(session, user)
+        context.update(
+            {"error": "Enter a valid start date", "name": name, "start_date": start_date}
+        )
+        return render(
+            request,
+            "dashboard.html",
+            context,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            session=session,
+        )
     except HTTPException as exc:
         context = _dashboard_context(session, user)
-        context.update({"error": exc.detail, "name": name})
+        context.update({"error": exc.detail, "name": name, "start_date": start_date})
         return render(
             request,
             "dashboard.html",
@@ -170,10 +183,12 @@ def board(
     ).first()
     if sprint is None:
         sprint = session.exec(
-            select(Sprint).where(
+            select(Sprint)
+            .where(
                 Sprint.project_id == project.id,
                 Sprint.status == SprintStatus.PLANNING,
             )
+            .order_by(*sprint_chronology())
         ).first()
     if sprint is None:
         return RedirectResponse(
@@ -276,7 +291,7 @@ def board(
                     Sprint.project_id == project.id,
                     Sprint.status.in_((SprintStatus.ACTIVE, SprintStatus.PLANNING)),
                 )
-                .order_by(Sprint.start_date)
+                .order_by(*sprint_chronology())
             ).all(),
             "today": date.today(),
         },
@@ -345,7 +360,7 @@ def ticket_list(
         .order_by(User.name)
     ).all()
     sprints = session.exec(
-        select(Sprint).where(Sprint.project_id == project.id).order_by(Sprint.start_date.desc())
+        select(Sprint).where(Sprint.project_id == project.id).order_by(*sprint_chronology())
     ).all()
     return render(
         request,

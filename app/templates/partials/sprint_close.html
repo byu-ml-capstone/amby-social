@@ -1,20 +1,10 @@
-<dialog class="app-dialog" aria-labelledby="sprint-close-heading" x-init="$nextTick(() => { $el.showModal(); $el.querySelector('h2').focus() })" @cancel="$event.preventDefault(); $el.close()" @close="$refs.closeFormOpener.focus()">
-  <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/close" method="post" class="app-form sprint-form" hx-post="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/close" hx-target="#sprint-dialog-root" hx-swap="innerHTML" @submit="$el.querySelector('[type=submit]').disabled = true">
-    <header class="app-dialog-header"><h2 id="sprint-close-heading" tabindex="-1" autofocus>Close {{ sprint.name }}?</h2></header>
-    {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
-    <p>{{ completed_points }} completed points · {{ unfinished_count }} unfinished tickets</p>
-    {% if not planning_sprints %}<p class="form-status">Create a planning sprint from Backlog before closing this sprint. Unfinished tickets will roll over to it.</p>{% endif %}
-    <input type="hidden" name="_csrf" value="{{ csrf_token }}">
-    <label>Rollover destination
-      <select name="next_sprint_id" required>
-        <option value="">Select a planning sprint</option>
-        {% for next_sprint in planning_sprints %}<option value="{{ next_sprint.id }}"{% if selected_next_sprint_id == next_sprint.id %} selected{% endif %}>{{ next_sprint.name }}</option>{% endfor %}
-    </select>
-  </label>
-  <label>Goal achieved
-    <select name="goal_achieved"><option value="">Not recorded</option><option value="yes">Yes</option><option value="no">No</option></select>
-  </label>
-  <label>Retrospective notes<textarea name="review_notes" rows="4" maxlength="4000" placeholder="Wins, blockers, and the next action"></textarea></label>
-    <div class="app-form-actions"><button class="app-secondary-button" type="button" @click="$el.closest('dialog').close()">Cancel</button><button class="app-primary-button" type="submit">Close sprint</button></div>
-  </form>
-</dialog>
+<form @cancel="$event.preventDefault(); $el.close()" x-init="$el.querySelector('h2').focus()" @close="$refs.closeFormOpener.focus()" action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/close" method="post" class="app-form sprint-form">
+  <header class="app-dialog-header"><h2 id="sprint-close-heading" tabindex="-1" autofocus>Close {{ sprint.name }}?</h2></header>
+  {% if error %}<p class="form-error">{{ error }}</p>{% endif %}
+  <p>Unfinished tickets will move to the earliest planned sprint. If none exists, the next sprint will be created automatically.</p>
+  <p>{{ unfinished_count }} unfinished ticket{{ '' if unfinished_count == 1 else 's' }} · {{ completed_points }} completed points</p>
+  <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+  <label>Goal achieved <select name="goal_achieved"><option value="">Not recorded</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+  <label>Review notes <textarea name="review_notes" maxlength="4000"></textarea></label>
+  <div class="app-form-actions"><button class="app-primary-button" type="submit">Close sprint</button></div>
+</form>

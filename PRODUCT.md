@@ -20,12 +20,19 @@ One source of truth driven from both sides: tickets move from MCP tool calls and
 
 ## Operating Context
 
-Small engineering team, one active sprint at a time. Web workspace: dashboard (My Work, projects), project Board (Backlog / Selected / In progress / Done), Backlog, List, Sprint History, Settings, ticket detail with comments and attachments. Integrations: GitHub PR sync, Gmail intake, chat webhooks, AI-drafted sprint reports.
+Small engineering team, one active sprint at a time with future sprints planned
+in advance. Projects begin with a scheduled planning sprint; owners can prepare
+multiple upcoming sprints, while members can assign work to any of them. Web
+workspace: dashboard (My Work, projects), project Board (Backlog / Selected /
+In progress / Done), Backlog, List, Sprint History, Settings, ticket detail with
+comments and attachments. Integrations: GitHub PR sync, Gmail intake, chat
+webhooks, AI-drafted sprint reports.
 
 ## Capabilities and Constraints
 
 - FastAPI + Jinja server-rendered templates, one stylesheet (`app/static/app.css`), minimal JS.
-- Only project OWNERs run sprint lifecycle actions; members work tickets.
+- Only project OWNERs run sprint lifecycle actions; members work tickets and
+  can assign unscheduled tickets to planned sprints.
 - Mobile: sidebar becomes a drawer; board columns scroll horizontally.
 - Korean-specific typography is not required.
 

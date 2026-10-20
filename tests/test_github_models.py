@@ -80,12 +80,8 @@ def test_competing_project_installation_bindings_allow_exactly_one(
     with Session(engine) as left, Session(engine) as right:
         assert left.get(ProjectGitHubConnection, project.id) is None
         assert right.get(ProjectGitHubConnection, project.id) is None
-        left.add(
-            ProjectGitHubConnection(project_id=project.id, installation_id=first_id)
-        )
-        right.add(
-            ProjectGitHubConnection(project_id=project.id, installation_id=second_id)
-        )
+        left.add(ProjectGitHubConnection(project_id=project.id, installation_id=first_id))
+        right.add(ProjectGitHubConnection(project_id=project.id, installation_id=second_id))
         left.commit()
         with pytest.raises(IntegrityError):
             right.commit()
@@ -94,11 +90,7 @@ def test_competing_project_installation_bindings_allow_exactly_one(
 
 
 def test_delivery_identity_is_provider_scoped(session):
-    session.add(
-        IntegrationDelivery(
-            provider="GITHUB", delivery_id="delivery-1", event_type="push"
-        )
-    )
+    session.add(IntegrationDelivery(provider="GITHUB", delivery_id="delivery-1", event_type="push"))
     session.commit()
     session.add(
         IntegrationDelivery(
@@ -111,9 +103,7 @@ def test_delivery_identity_is_provider_scoped(session):
         session.commit()
 
 
-def test_delete_project_removes_state_binding_and_repositories(
-    session, make_user, make_project
-):
+def test_delete_project_removes_state_binding_and_repositories(session, make_user, make_project):
     owner = make_user(email="delete-github@example.com")
     project = make_project(owner, name="Delete GitHub")
     installation = GitHubInstallation(

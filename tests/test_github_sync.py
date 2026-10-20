@@ -67,9 +67,7 @@ def github_sync_world(session, make_user, make_project):
 
 
 def test_extract_ticket_numbers_is_case_insensitive_and_boundary_aware():
-    assert extract_ticket_numbers(
-        "PAY", ["PAY-104 (pay-7) XPAY-2 PAY-0 PAY--1 PAY-9X"]
-    ) == {7, 104}
+    assert extract_ticket_numbers("PAY", ["PAY-104 (pay-7) XPAY-2 PAY-0 PAY--1 PAY-9X"]) == {7, 104}
 
 
 def test_extract_ticket_numbers_ignores_oversized_reference_and_keeps_valid():
@@ -115,25 +113,26 @@ def test_review_dismissal_removes_only_that_reviewers_effective_decision():
 
 @pytest.mark.parametrize("status", ["waiting", "requested", "pending"])
 def test_ci_waiting_requested_and_pending_are_pending(status):
-    assert aggregate_ci_state(
-        [{"status": status, "conclusion": None}]
-    ) is GitHubCIState.PENDING
+    assert aggregate_ci_state([{"status": status, "conclusion": None}]) is GitHubCIState.PENDING
 
 
 def test_ci_stale_conclusion_is_failed_and_empty_is_none():
-    assert aggregate_ci_state(
-        [{"status": "completed", "conclusion": "stale"}]
-    ) is GitHubCIState.FAILED
+    assert (
+        aggregate_ci_state([{"status": "completed", "conclusion": "stale"}]) is GitHubCIState.FAILED
+    )
     assert aggregate_ci_state([]) is GitHubCIState.NONE
 
 
 def test_ci_failure_outranks_pending():
-    assert aggregate_ci_state(
-        [
-            {"status": "waiting", "conclusion": None},
-            {"status": "completed", "conclusion": "failure"},
-        ]
-    ) is GitHubCIState.FAILED
+    assert (
+        aggregate_ci_state(
+            [
+                {"status": "waiting", "conclusion": None},
+                {"status": "completed", "conclusion": "failure"},
+            ]
+        )
+        is GitHubCIState.FAILED
+    )
 
 
 @pytest.mark.parametrize(
@@ -151,9 +150,10 @@ def test_ci_malformed_or_unknown_check_is_none(check):
 
 @pytest.mark.parametrize("conclusion", ["success", "neutral", "skipped"])
 def test_ci_completed_successful_conclusions_are_passed(conclusion):
-    assert aggregate_ci_state(
-        [{"status": "completed", "conclusion": conclusion}]
-    ) is GitHubCIState.PASSED
+    assert (
+        aggregate_ci_state([{"status": "completed", "conclusion": conclusion}])
+        is GitHubCIState.PASSED
+    )
 
 
 def _pull(title="PAY-1 PAY-2", body="", branch="feature/pay-1"):
@@ -183,15 +183,11 @@ def _pull(title="PAY-1 PAY-2", body="", branch="feature/pay-1"):
     ],
 )
 def test_pull_state_mapping_is_exact(session, github_sync_world, changes, expected):
-    artifact = upsert_pull_request(
-        session, github_sync_world.connection, {**_pull(), **changes}
-    )
+    artifact = upsert_pull_request(session, github_sync_world.connection, {**_pull(), **changes})
     assert artifact.state is expected
 
 
-def test_pull_rejects_empty_external_identity_before_persistence(
-    session, github_sync_world
-):
+def test_pull_rejects_empty_external_identity_before_persistence(session, github_sync_world):
     with pytest.raises(ValueError, match="invalid pull request payload"):
         upsert_pull_request(
             session,
@@ -210,9 +206,7 @@ def test_pull_rejects_empty_external_identity_before_persistence(
         "https://github.com:444/acme/api/pull/17",
     ],
 )
-def test_pull_rejects_urls_outside_configured_https_origin(
-    session, github_sync_world, html_url
-):
+def test_pull_rejects_urls_outside_configured_https_origin(session, github_sync_world, html_url):
     with pytest.raises(ValueError, match="configured HTTPS web origin"):
         upsert_pull_request(
             session,
@@ -223,9 +217,7 @@ def test_pull_rejects_urls_outside_configured_https_origin(
     assert session.exec(select(GitHubArtifact)).all() == []
 
 
-def test_pull_upsert_persists_mapping_and_reconciles_links(
-    session, github_sync_world
-):
+def test_pull_upsert_persists_mapping_and_reconciles_links(session, github_sync_world):
     world = github_sync_world
     artifact = upsert_pull_request(session, world.connection, _pull())
     reconcile_pull_request_links(
@@ -237,9 +229,7 @@ def test_pull_upsert_persists_mapping_and_reconciles_links(
     session.commit()
     assert artifact.state is GitHubArtifactState.OPEN
     assert artifact.head_sha == "a" * 40
-    assert artifact.occurred_at.replace(tzinfo=UTC) == datetime(
-        2026, 9, 17, 12, tzinfo=UTC
-    )
+    assert artifact.occurred_at.replace(tzinfo=UTC) == datetime(2026, 9, 17, 12, tzinfo=UTC)
     linked = session.exec(
         select(Ticket.ticket_number)
         .join(TicketGitLink, TicketGitLink.ticket_id == Ticket.id)
@@ -262,9 +252,7 @@ def test_pull_upsert_persists_mapping_and_reconciles_links(
     assert linked == [2]
 
 
-def test_pull_head_change_clears_ci_state_and_preserves_review_state(
-    session, github_sync_world
-):
+def test_pull_head_change_clears_ci_state_and_preserves_review_state(session, github_sync_world):
     artifact = upsert_pull_request(session, github_sync_world.connection, _pull())
     artifact.ci_state = GitHubCIState.PASSED
     artifact.review_state = GitHubReviewState.APPROVED
@@ -281,16 +269,12 @@ def test_pull_head_change_clears_ci_state_and_preserves_review_state(
     assert updated.review_state is GitHubReviewState.APPROVED
 
 
-def test_pull_link_reconciliation_does_not_change_ticket_status(
-    session, github_sync_world
-):
+def test_pull_link_reconciliation_does_not_change_ticket_status(session, github_sync_world):
     github_sync_world.first.status = TicketStatus.IN_PROGRESS
     session.add(github_sync_world.first)
     session.commit()
     artifact = upsert_pull_request(session, github_sync_world.connection, _pull())
-    reconcile_pull_request_links(
-        session, github_sync_world.connection, artifact, ["PAY-1"]
-    )
+    reconcile_pull_request_links(session, github_sync_world.connection, artifact, ["PAY-1"])
     session.commit()
     session.refresh(github_sync_world.first)
     assert github_sync_world.first.status is TicketStatus.IN_PROGRESS
@@ -298,17 +282,13 @@ def test_pull_link_reconciliation_does_not_change_ticket_status(
 
 def test_pull_changes_remain_in_callers_transaction(session, github_sync_world):
     artifact = upsert_pull_request(session, github_sync_world.connection, _pull())
-    reconcile_pull_request_links(
-        session, github_sync_world.connection, artifact, ["PAY-1"]
-    )
+    reconcile_pull_request_links(session, github_sync_world.connection, artifact, ["PAY-1"])
     session.rollback()
     assert session.exec(select(GitHubArtifact)).all() == []
     assert session.exec(select(TicketGitLink)).all() == []
 
 
-def test_commit_uses_safe_html_url_and_keeps_first_links(
-    session, github_sync_world
-):
+def test_commit_uses_safe_html_url_and_keeps_first_links(session, github_sync_world):
     world = github_sync_world
     sha = "b" * 40
     commit = {
@@ -346,9 +326,7 @@ def test_commit_uses_safe_html_url_and_keeps_first_links(
 
 
 @pytest.mark.parametrize("sha", ["a" * 39, "g" * 40, None])
-def test_commit_rejects_non_sha_ids_before_persistence(
-    session, github_sync_world, sha
-):
+def test_commit_rejects_non_sha_ids_before_persistence(session, github_sync_world, sha):
     assert (
         insert_linked_commit(
             session,

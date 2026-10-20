@@ -85,6 +85,10 @@
             {% if error %}aria-describedby="form-error" aria-invalid="true"{% endif %}
           >
         </div>
+        <div>
+          <label for="project-start-date">Start date</label>
+          <input id="project-start-date" class="app-input" type="date" name="start_date" value="{{ start_date|default(today.isoformat()) }}" required>
+        </div>
       <div class="app-form-actions">
           <button class="app-ghost-button" type="button" @click="$refs.projectDialog.close()">Cancel</button>
           <button class="app-primary-button">Create</button>

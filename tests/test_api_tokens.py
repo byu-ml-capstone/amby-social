@@ -67,7 +67,7 @@ def test_read_token_rejects_writes(client, make_user, login_as):
 
     response = client.post(
         "/api/v1/projects",
-        json={"name": "Blocked write"},
+        json={"name": "Blocked write", "start_date": "2026-09-21"},
         headers={"Authorization": f"Bearer {issued['token']}"},
     )
 
@@ -81,7 +81,7 @@ def test_write_token_allows_writes(client, make_user, login_as):
 
     response = client.post(
         "/api/v1/projects",
-        json={"name": "Allowed write"},
+        json={"name": "Allowed write", "start_date": "2026-09-21"},
         headers={"Authorization": f"Bearer {issued['token']}"},
     )
 

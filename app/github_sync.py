@@ -56,9 +56,7 @@ def branch_command(project: Project, ticket: Ticket) -> str:
     return f"git checkout -b feature/{reference}-{slugify(ticket.title)}"
 
 
-def ticket_development(
-    session: Session, ticket: Ticket
-) -> list[TicketDevelopmentRow]:
+def ticket_development(session: Session, ticket: Ticket) -> list[TicketDevelopmentRow]:
     rows = session.exec(
         select(GitHubArtifact, ProjectGitHubRepository)
         .join(TicketGitLink, TicketGitLink.artifact_id == GitHubArtifact.id)
@@ -132,9 +130,7 @@ def save_project_repositories(
     existing = {
         row.github_repository_id: row
         for row in session.exec(
-            select(ProjectGitHubRepository).where(
-                ProjectGitHubRepository.project_id == project.id
-            )
+            select(ProjectGitHubRepository).where(ProjectGitHubRepository.project_id == project.id)
         ).all()
     }
     selected = []
@@ -175,9 +171,7 @@ def save_project_repositories(
 def disconnect_project_github(session: Session, project: Project) -> None:
     now = utcnow()
     for row in session.exec(
-        select(ProjectGitHubRepository).where(
-            ProjectGitHubRepository.project_id == project.id
-        )
+        select(ProjectGitHubRepository).where(ProjectGitHubRepository.project_id == project.id)
     ).all():
         row.active = False
         row.disconnected_at = now
@@ -186,9 +180,7 @@ def disconnect_project_github(session: Session, project: Project) -> None:
     session.commit()
 
 
-def extract_ticket_numbers(
-    project_key: str, texts: Iterable[str | None]
-) -> set[int]:
+def extract_ticket_numbers(project_key: str, texts: Iterable[str | None]) -> set[int]:
     if not project_key:
         return set()
     pattern = re.compile(
@@ -262,10 +254,7 @@ def aggregate_ci_state(check_runs: Sequence[dict]) -> GitHubCIState:
         check
         for check in check_runs
         if isinstance(check, dict)
-        and (
-            isinstance(check.get("status"), str)
-            or isinstance(check.get("conclusion"), str)
-        )
+        and (isinstance(check.get("status"), str) or isinstance(check.get("conclusion"), str))
     ]
     if not checks:
         return GitHubCIState.NONE
@@ -274,8 +263,7 @@ def aggregate_ci_state(check_runs: Sequence[dict]) -> GitHubCIState:
     if any(check.get("status") in pending_statuses for check in checks):
         return GitHubCIState.PENDING
     if all(
-        check.get("status") == "completed"
-        and check.get("conclusion") in successful_conclusions
+        check.get("status") == "completed" and check.get("conclusion") in successful_conclusions
         for check in checks
     ):
         return GitHubCIState.PASSED

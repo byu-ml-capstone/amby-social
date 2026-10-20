@@ -16,9 +16,7 @@ def comment_world(make_user, make_project, add_member, engine):
     add_member(project, member)
     with Session(engine) as session:
         stored_project = session.get(Project, project.id)
-        set_chat_webhook(
-            session, stored_project, WebhookType.SLACK, "https://example.com/hook"
-        )
+        set_chat_webhook(session, stored_project, WebhookType.SLACK, "https://example.com/hook")
         ticket = Ticket(
             ticket_number=1,
             project_id=project.id,
@@ -76,7 +74,7 @@ def test_ticket_detail_includes_the_comment_composer_and_project_members(
     assert f'data-mention-id="{comment_world.member.id}"' in response.text
     assert "@Bob Builder" in response.text
     assert "No details provided." in response.text
-    assert 'data-description-fields hidden>' in response.text
+    assert "data-description-fields hidden>" in response.text
 
     page = client.get(f"/projects/{comment_world.project.slug}/tickets/1")
     assert '<script src="/static/app.js?v=' in page.text
@@ -247,9 +245,7 @@ def test_comment_author_can_delete_their_comment(client, comment_world, login_as
     assert session.get(TicketComment, comment_id) is None
 
 
-def test_project_owner_can_delete_another_members_comment(
-    client, comment_world, login_as, session
-):
+def test_project_owner_can_delete_another_members_comment(client, comment_world, login_as, session):
     comment = TicketComment(
         ticket_id=comment_world.ticket.id,
         author_id=comment_world.member.id,
@@ -294,9 +290,7 @@ def test_comment_rejects_a_nonmember_mention_without_writing(
     assert session.exec(select(TicketComment)).all() == []
 
 
-def test_invalid_plain_comment_create_renders_the_full_ticket_page(
-    client, comment_world, login_as
-):
+def test_invalid_plain_comment_create_renders_the_full_ticket_page(client, comment_world, login_as):
     login_as(comment_world.owner.email)
 
     response = client.post(
@@ -345,9 +339,7 @@ def test_comment_creation_requires_csrf(client, comment_world, login_as, session
     assert session.exec(select(TicketComment)).all() == []
 
 
-def test_deleting_a_ticket_also_deletes_its_comments(
-    client, comment_world, login_as, session
-):
+def test_deleting_a_ticket_also_deletes_its_comments(client, comment_world, login_as, session):
     comment = TicketComment(
         ticket_id=comment_world.ticket.id,
         author_id=comment_world.member.id,

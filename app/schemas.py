@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.models import (
     REPORT_TEXT_MAX_LENGTH,
@@ -84,10 +84,15 @@ class TokenIssued(TokenOut):
 
 
 class ProjectCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str = Field(min_length=1, max_length=100)
+    start_date: date
 
 
 class ProjectUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = Field(default=None, min_length=1, max_length=100)
 
     @field_validator("name")
@@ -108,6 +113,7 @@ class ProjectOut(BaseModel):
     name: str
     slug: str
     key: str
+    start_date: date
     created_at: datetime
     role: str | None = None
 
@@ -224,51 +230,26 @@ class StatusUpdate(BaseModel):
     resolution_notes: str | None = None
 
 
-def _strip_sprint_text(value: str | None) -> str | None:
-    if value is not None:
-        value = value.strip()
-        if not value:
-            raise ValueError("value must not be blank")
-    return value
-
-
 class SprintCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    goal: str = Field(min_length=1, max_length=2000)
-    start_date: date
-    end_date: date
+    model_config = ConfigDict(extra="forbid")
 
-    _strip_text = field_validator("name", "goal")(_strip_sprint_text)
-
-    @model_validator(mode="after")
-    def dates_are_ordered(self):
-        if self.end_date <= self.start_date:
-            raise ValueError("end_date must be after start_date")
-        return self
+    count: int = Field(default=1, ge=1, le=5, strict=True)
 
 
 class SprintUpdate(BaseModel):
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    goal: str | None = Field(default=None, min_length=1, max_length=2000)
-    start_date: date | None = None
-    end_date: date | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    goal: str | None = Field(default=None, max_length=2000)
     status: Literal[SprintStatus.ACTIVE] | None = None
 
-    _strip_text = field_validator("name", "goal")(_strip_sprint_text)
-
-    @model_validator(mode="after")
-    def dates_are_ordered(self):
-        if (
-            self.start_date is not None
-            and self.end_date is not None
-            and self.end_date <= self.start_date
-        ):
-            raise ValueError("end_date must be after start_date")
-        return self
+    @field_validator("goal")
+    @classmethod
+    def trim_goal(cls, value: str | None) -> str | None:
+        return value.strip() if value is not None else None
 
 
 class SprintClose(BaseModel):
-    next_sprint_id: str
+    model_config = ConfigDict(extra="forbid")
 
 
 class SprintOut(BaseModel):

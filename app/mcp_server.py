@@ -173,9 +173,11 @@ async def _tool_request(method: str, path: str, json=None):
 
 
 @mcp.tool()
-async def create_project(name: str) -> dict[str, object]:
-    """Create a project owned by the token's user."""
-    return await _tool_request("POST", "/api/v1/projects", {"name": name})
+async def create_project(name: str, start_date: date) -> dict[str, object]:
+    """Create a project and its initial sprint. The start date is immutable."""
+    return await _tool_request(
+        "POST", "/api/v1/projects", {"name": name, "start_date": start_date.isoformat()}
+    )
 
 
 @mcp.tool()
@@ -438,19 +440,10 @@ async def list_sprints(slug: str) -> list[dict[str, object]]:
 
 
 @mcp.tool()
-async def create_sprint(
-    slug: str, name: str, goal: str, start_date: date, end_date: date
-) -> dict[str, object]:
-    """Create a planning sprint. Owner-only."""
+async def create_sprint(slug: str, count: int = 1) -> list[dict[str, object]]:
+    """Create one to five generated planning sprints. Owner-only."""
     return await _tool_request(
-        "POST",
-        f"/api/v1/projects/{_path_segment(slug)}/sprints",
-        {
-            "name": name,
-            "goal": goal,
-            "start_date": start_date.isoformat(),
-            "end_date": end_date.isoformat(),
-        },
+        "POST", f"/api/v1/projects/{_path_segment(slug)}/sprints", {"count": count}
     )
 
 
@@ -463,13 +456,9 @@ async def start_sprint(sprint_id: str) -> dict[str, object]:
 
 
 @mcp.tool()
-async def close_sprint(sprint_id: str, next_sprint_id: str) -> dict[str, object]:
-    """Close an active sprint and roll work over. Owner-only."""
-    return await _tool_request(
-        "POST",
-        f"/api/v1/sprints/{_path_segment(sprint_id)}/close",
-        {"next_sprint_id": next_sprint_id},
-    )
+async def close_sprint(sprint_id: str) -> dict[str, object]:
+    """Close an active sprint and automatically select or create its successor."""
+    return await _tool_request("POST", f"/api/v1/sprints/{_path_segment(sprint_id)}/close", {})
 
 
 @mcp.tool()
@@ -479,25 +468,11 @@ async def get_sprint(sprint_id: str) -> dict[str, object]:
 
 
 @mcp.tool()
-async def update_sprint(
-    sprint_id: str,
-    name: str | None = None,
-    goal: str | None = None,
-    start_date: date | None = None,
-    end_date: date | None = None,
-) -> dict[str, object]:
-    """Update a planning sprint. Owner-only."""
-    changes = {
-        key: value.isoformat() if isinstance(value, date) else value
-        for key, value in {
-            "name": name,
-            "goal": goal,
-            "start_date": start_date,
-            "end_date": end_date,
-        }.items()
-        if value is not None
-    }
-    return await _tool_request("PATCH", f"/api/v1/sprints/{_path_segment(sprint_id)}", changes)
+async def update_sprint(sprint_id: str, goal: str) -> dict[str, object]:
+    """Update a planning sprint's goal. Owner-only."""
+    return await _tool_request(
+        "PATCH", f"/api/v1/sprints/{_path_segment(sprint_id)}", {"goal": goal}
+    )
 
 
 @mcp.tool()

@@ -50,6 +50,7 @@ from app.services import (
     create_ticket,
     delete_ticket_record,
     set_status,
+    sprint_chronology,
     update_ticket,
 )
 
@@ -259,7 +260,7 @@ def _ticket_detail(
             Sprint.project_id == project.id,
             Sprint.status.in_((SprintStatus.ACTIVE, SprintStatus.PLANNING)),
         )
-        .order_by(Sprint.start_date)
+        .order_by(*sprint_chronology())
     ).all()
     form_values = {
         "title": ticket.title,

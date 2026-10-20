@@ -178,9 +178,9 @@ def test_sprint_migration_creates_constraints(tmp_path):
     assert {"sprint_id", "first_sprint_entered_at", "delayed_days", "rollover_count"} <= {
         column["name"] for column in inspector.get_columns("ticket")
     }
-    assert {"uq_sprint_active_project", "uq_sprint_planning_project"} <= {
-        index["name"] for index in inspector.get_indexes("sprint")
-    }
+    sprint_indexes = {index["name"] for index in inspector.get_indexes("sprint")}
+    assert "uq_sprint_active_project" in sprint_indexes
+    assert "uq_sprint_planning_project" not in sprint_indexes
     assert {
         foreign_key["referred_table"] for foreign_key in inspector.get_foreign_keys("ticket")
     } >= {"sprint"}
@@ -198,8 +198,10 @@ def test_sprint_migration_rejects_invalid_dates(tmp_path):
     with engine.begin() as connection:
         connection.execute(
             text(
-                "INSERT INTO project (id, name, slug, key, next_ticket_number, created_at) "
-                "VALUES ('project-1', 'Project', 'project', 'PRO', 1, CURRENT_TIMESTAMP)"
+                "INSERT INTO project "
+                "(id, name, slug, key, next_ticket_number, start_date, created_at) "
+                "VALUES ('project-1', 'Project', 'project', 'PRO', 1, '2026-09-21', "
+                "CURRENT_TIMESTAMP)"
             )
         )
         with pytest.raises(IntegrityError):
@@ -240,9 +242,7 @@ def test_sprint_migration_enforces_status_and_history_constraints(tmp_path):
         session.add(planning)
         session.commit()
         session.add(Sprint(name="Planning 2", status=SprintStatus.PLANNING, **sprint_kwargs))
-        with pytest.raises(IntegrityError):
-            session.commit()
-        session.rollback()
+        session.commit()
 
         active = Sprint(name="Active", status=SprintStatus.ACTIVE, **sprint_kwargs)
         session.add(active)
@@ -532,6 +532,48 @@ def test_attachment_migration_round_trip(tmp_path):
     }
     subprocess.run(["uv", "run", "alembic", "downgrade", "a3f7c9e2b815"], check=True, env=env)
     assert "ticket_attachment" not in inspect(make_engine(f"sqlite:///{db}")).get_table_names()
+
+
+def test_project_start_date_migration_backfills_without_creating_or_changing_sprints(
+    tmp_path,
+):
+    db = tmp_path / "project-start-date.db"
+    env = {"DATABASE_URL": f"sqlite:///{db}", "PATH": os.environ["PATH"]}
+    subprocess.run(["uv", "run", "alembic", "upgrade", "e5c1a7d3b902"], check=True, env=env)
+    with make_engine(f"sqlite:///{db}").begin() as connection:
+        connection.execute(
+            text(
+                "INSERT INTO project (id,name,slug,key,next_ticket_number,created_at) VALUES "
+                "('empty','Empty','empty','EMP',1,'2026-02-03 14:15:16'),"
+                "('planned','Planned','planned','PLN',1,'2026-02-04 01:02:03')"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO sprint (id,project_id,name,goal,status,start_date,end_date) VALUES "
+                "('legacy','planned','Legacy name','Legacy goal','PLANNING',"
+                "'2025-01-02','2025-01-09')"
+            )
+        )
+
+    subprocess.run(["uv", "run", "alembic", "upgrade", "head"], check=True, env=env)
+    engine = make_engine(f"sqlite:///{db}")
+    with engine.connect() as connection:
+        assert connection.execute(text("SELECT id,start_date FROM project ORDER BY id")).all() == [
+            ("empty", "2026-02-03"),
+            ("planned", "2026-02-04"),
+        ]
+        assert connection.execute(
+            text("SELECT id,name,goal,start_date,end_date FROM sprint")
+        ).all() == [("legacy", "Legacy name", "Legacy goal", "2025-01-02", "2025-01-09")]
+    start_column = next(
+        column
+        for column in inspect(engine).get_columns("project")
+        if column["name"] == "start_date"
+    )
+    assert start_column["nullable"] is False
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        connection.execute(text("UPDATE project SET start_date = NULL WHERE id = 'empty'"))
 
 
 def test_sprint_report_migration_backfills_closed_sprints_and_round_trips(tmp_path):
