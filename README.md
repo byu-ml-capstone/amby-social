@@ -41,7 +41,8 @@ planning sprint, then Backlog as a fallback. Project navigation includes:
 - **Settings** — project details, webhook configuration, and membership.
 
 Only project **OWNER**s can create, start, or close sprints. Members can view
-sprint pages and work with tickets, but cannot run sprint lifecycle actions.
+sprint pages, work with tickets, and assign unscheduled tickets to any planning
+sprint, but cannot run sprint lifecycle actions.
 
 On small screens, the project sidebar becomes a menu drawer. Board columns
 remain full-width and scroll horizontally instead of being compressed.
@@ -161,14 +162,19 @@ brings its real attachments along (not inline signature images).
 
 ## Sprint API
 
-Sprints are available through the JSON API. An `OWNER` creates a dated
-`PLANNING` sprint, starts it with `PATCH /api/v1/sprints/{id}` and
-`{"status": "ACTIVE"}`, then closes it with
-`POST /api/v1/sprints/{id}/close` and a required `next_sprint_id` for an
-existing `PLANNING` sprint. Closing snapshots the current sprint's tickets,
-rolls unfinished tickets into that explicit next sprint, transitions the
-current sprint to `CLOSED`, and leaves the next sprint in `PLANNING` until an
-owner starts it.
+Project creation requires an immutable ISO `start_date` and returns it in every
+project response. It atomically creates an empty planning sprint beginning on
+the first Monday on or after that date. An `OWNER` adds one to five generated
+sprints with `{"count": 1}`; the endpoint always returns a list. Generated
+sprints are 14 days long, 14 days apart, have blank goals, and use
+`SPRINT_NAME_PATTERN` (`Sprint {number:02d}` by default).
+
+Owners may edit only a planning sprint's goal. A nonblank goal is required to
+start, and only the earliest planning sprint in `(start_date, end_date, id)`
+order may start. Sprint lists use that same ascending order. Closing accepts an
+empty JSON object, snapshots the closed sprint, and rolls unfinished work into
+the earliest plan or atomically creates the next generated sprint when none
+exists.
 
 The available commands are:
 
@@ -237,9 +243,9 @@ uv run mcp run app/mcp_server.py:mcp --transport stdio
 
 The MCP tools cover:
 
-- project create, list, read, rename, and delete
+- project create (name plus start date), list, read, rename, and delete
 - ticket create, list, read, update, status change, and delete
-- sprint list, create, start, close, read, update, and history
+- sprint list, count-based create, start, automatic close, goal update, read, and history
 - sprint report read, payload, and save (see below)
 - project-member list, add, role update, and removal
 

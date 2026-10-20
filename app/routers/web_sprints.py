@@ -6,7 +6,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 from sqlmodel import Session, select
 
-from app.auth import current_user, project_owner, project_reader, verify_csrf
+from app.auth import current_user, project_owner, project_reader, project_writer, verify_csrf
 from app.config import settings
 from app.db import get_session
 from app.github import (
@@ -51,15 +51,17 @@ from app.services import (
     add_project_member,
     chat_webhooks,
     close_sprint,
-    create_sprint,
+    create_sprints,
     delete_project,
     disconnect_chat_webhook,
     project_members,
     remove_project_member,
     set_chat_webhook,
+    sprint_chronology,
     start_sprint,
     update_project,
     update_project_member,
+    update_sprint,
     update_ticket,
 )
 from app.sprint_reports import REPORT_FIELDS, finalize_report, get_report, save_report
@@ -173,12 +175,14 @@ def _backlog(
     type_filter: TicketType | None = None,
     **context,
 ) -> Response:
-    planning_sprint = session.exec(
-        select(Sprint).where(
+    planning_sprints = session.exec(
+        select(Sprint)
+        .where(
             Sprint.project_id == project.id,
             Sprint.status == SprintStatus.PLANNING,
         )
-    ).first()
+        .order_by(*sprint_chronology())
+    ).all()
     filters = [Ticket.project_id == project.id, Ticket.sprint_id.is_(None)]
     if q:
         filters.append(Ticket.title.ilike(f"%{q.strip()}%"))
@@ -189,11 +193,22 @@ def _backlog(
     tickets = session.exec(
         select(Ticket).where(*filters).order_by(Ticket.backlog_rank.desc())
     ).all()
-    planning_tickets = (
-        session.exec(select(Ticket).where(Ticket.sprint_id == planning_sprint.id)).all()
-        if planning_sprint
-        else []
-    )
+    planning_groups = []
+    for planning_sprint in planning_sprints:
+        sprint_tickets = session.exec(
+            select(Ticket).where(Ticket.sprint_id == planning_sprint.id)
+        ).all()
+        planning_groups.append(
+            {
+                "sprint": planning_sprint,
+                "tickets": sprint_tickets,
+                "ticket_count": len(sprint_tickets),
+                "points": sum(ticket.story_points or 0 for ticket in sprint_tickets),
+                "unestimated_count": sum(ticket.story_points is None for ticket in sprint_tickets),
+            }
+        )
+    planning_sprint = planning_sprints[0] if planning_sprints else None
+    planning_tickets = planning_groups[0]["tickets"] if planning_groups else []
     recent_completed = session.exec(
         select(Sprint.completed_points)
         .where(Sprint.project_id == project.id, Sprint.status == SprintStatus.CLOSED)
@@ -214,6 +229,8 @@ def _backlog(
             "role": member.role.value,
             "active_tab": "backlog",
             "planning_sprint": planning_sprint,
+            "planning_sprints": planning_sprints,
+            "planning_groups": planning_groups,
             "planning_tickets": planning_tickets,
             "planning_ticket_count": len(planning_tickets),
             "planning_points": sum(ticket.story_points or 0 for ticket in planning_tickets),
@@ -234,7 +251,7 @@ def _backlog(
                     Sprint.project_id == project.id,
                     Sprint.status.in_((SprintStatus.ACTIVE, SprintStatus.PLANNING)),
                 )
-                .order_by(Sprint.start_date)
+                .order_by(*sprint_chronology())
             ).all(),
             "values": {},
             "field_errors": {},
@@ -289,16 +306,9 @@ def _close_preview(
     sprint: Sprint,
     *,
     error: str | None = None,
-    selected_next_sprint_id: str = "",
     status_code: int = status.HTTP_200_OK,
 ) -> Response:
     tickets = session.exec(select(Ticket).where(Ticket.sprint_id == sprint.id)).all()
-    planning_sprints = session.exec(
-        select(Sprint).where(
-            Sprint.project_id == project.id,
-            Sprint.status == SprintStatus.PLANNING,
-        )
-    ).all()
     return render(
         request,
         "partials/sprint_close.html",
@@ -306,13 +316,11 @@ def _close_preview(
             "user": user,
             "project": project,
             "sprint": sprint,
-            "planning_sprints": planning_sprints,
             "completed_points": sum(
                 ticket.story_points or 0 for ticket in tickets if ticket.status is TicketStatus.DONE
             ),
             "unfinished_count": sum(ticket.status is not TicketStatus.DONE for ticket in tickets),
             "error": error,
-            "selected_next_sprint_id": selected_next_sprint_id,
         },
         status_code=status_code,
     )
@@ -983,19 +991,16 @@ def finalize_sprint_report_form(
 @router.post("/projects/{slug}/sprints", dependencies=[Depends(verify_csrf)])
 def create_sprint_form(
     request: Request,
-    name: str = Form(""),
-    goal: str = Form(""),
-    start_date: str = Form(""),
-    end_date: str = Form(""),
+    count: int = Form(1),
     access: tuple[Project, ProjectMember] = Depends(project_owner),
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> Response:
     project, member = access
-    values = {"name": name, "goal": goal, "start_date": start_date, "end_date": end_date}
+    values = {"count": count}
     try:
         sprint_data = SprintCreate(**values)
-        create_sprint(session, project, **sprint_data.model_dump())
+        create_sprints(session, project, sprint_data.count)
     except ValidationError as exc:
         field_errors = {
             error["loc"][-1] if error["loc"] else "form": error["msg"] for error in exc.errors()
@@ -1023,6 +1028,20 @@ def create_sprint_form(
             sprint_form_open=True,
             status_code=exc.status_code,
         )
+    return RedirectResponse(
+        f"/projects/{project.slug}/backlog", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post("/projects/{slug}/sprints/{sprint_id}/goal", dependencies=[Depends(verify_csrf)])
+def update_sprint_goal_form(
+    sprint_id: str,
+    goal: str = Form(""),
+    access: tuple[Project, ProjectMember] = Depends(project_owner),
+    session: Session = Depends(get_session),
+) -> Response:
+    project, _ = access
+    update_sprint(session, _project_sprint(session, project, sprint_id), goal=goal)
     return RedirectResponse(
         f"/projects/{project.slug}/backlog", status_code=status.HTTP_303_SEE_OTHER
     )
@@ -1072,7 +1091,6 @@ def close_sprint_preview(
 def close_sprint_form(
     sprint_id: str,
     request: Request,
-    next_sprint_id: str = Form(""),
     goal_achieved: str = Form(""),
     review_notes: str = Form(""),
     access: tuple[Project, ProjectMember] = Depends(project_owner),
@@ -1081,34 +1099,13 @@ def close_sprint_form(
 ) -> Response:
     project, _ = access
     sprint = _project_sprint(session, project, sprint_id)
-    if not next_sprint_id:
-        return _close_preview(
-            request,
-            session,
-            user,
-            project,
-            sprint,
-            error="Select a planning sprint",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
-    next_sprint = session.get(Sprint, next_sprint_id)
-    if next_sprint is None:
-        return _close_preview(
-            request,
-            session,
-            user,
-            project,
-            sprint,
-            error="Select a planning sprint",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
     try:
         review = {}
         if goal_achieved in {"yes", "no"}:
             review["goal_achieved"] = goal_achieved == "yes"
         if review_notes:
             review["review_notes"] = review_notes
-        close_sprint(session, sprint, next_sprint, **review)
+        close_sprint(session, sprint, **review)
     except HTTPException as exc:
         return _close_preview(
             request,
@@ -1117,7 +1114,6 @@ def close_sprint_form(
             project,
             sprint,
             error=exc.detail,
-            selected_next_sprint_id=next_sprint_id,
             status_code=exc.status_code,
         )
     target = f"/projects/{project.slug}"
@@ -1130,7 +1126,7 @@ def close_sprint_form(
 def assign_tickets_to_planning_sprint(
     sprint_id: str,
     ticket_ids: list[str] = _TICKET_IDS_FORM,
-    access: tuple[Project, ProjectMember] = Depends(project_owner),
+    access: tuple[Project, ProjectMember] = Depends(project_writer),
     session: Session = Depends(get_session),
 ) -> Response:
     project, _ = access

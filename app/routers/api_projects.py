@@ -34,6 +34,7 @@ def _out(project: Project, role: Role | None) -> ProjectOut:
         name=project.name,
         slug=project.slug,
         key=project.key,
+        start_date=project.start_date,
         created_at=project.created_at,
         role=role.value if role else None,
     )
@@ -45,7 +46,7 @@ def post_project(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ):
-    project = create_project(session, body.name, user)
+    project = create_project(session, body.name, body.start_date, user)
     return _out(project, Role.OWNER)
 
 

@@ -601,15 +601,15 @@ def test_project_falls_back_to_planning_sprint(client, make_user, make_project, 
     assert 'data-testid="sprint-summary"' not in page.text
 
 
-def test_project_without_sprint_redirects_to_backlog(client, make_user, make_project, login_as):
+def test_new_project_opens_its_initial_sprint_board(client, make_user, make_project, login_as):
     owner = make_user(email="ada@example.com")
     project = make_project(owner)
     login_as(owner.email)
 
     page = client.get(f"/projects/{project.slug}", follow_redirects=False)
 
-    assert page.status_code == 303
-    assert page.headers["location"] == f"/projects/{project.slug}/backlog"
+    assert page.status_code == 200
+    assert "Sprint 01" in page.text
 
 
 def test_board_filters_selected_sprint_and_renders_human_labels(

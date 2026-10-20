@@ -75,9 +75,7 @@ def _assert_state_used(session, state, user):
 
 
 @pytest.fixture
-def github_selection(
-    settings_world, session, monkeypatch, configured_github
-):
+def github_selection(settings_world, session, monkeypatch, configured_github):
     installation = GitHubInstallation(
         github_installation_id=7001,
         account_id=91,
@@ -200,9 +198,7 @@ def test_settings_member_controls_name_members_and_use_a_danger_action(
     assert 'class="app-danger-button" type="submit">Delete project</button>' in page.text
 
 
-def test_project_settings_save_redirects_to_a_textual_status(
-    client, settings_world, login_as
-):
+def test_project_settings_save_redirects_to_a_textual_status(client, settings_world, login_as):
     login_as(settings_world.owner.email)
 
     response = client.post(
@@ -222,9 +218,7 @@ def test_member_reads_settings_without_mutation_controls_or_webhook_secret(
     client, settings_world, session, login_as
 ):
     project = session.get(Project, settings_world.project.id)
-    set_chat_webhook(
-        session, project, WebhookType.SLACK, "https://hooks.example.test/secret"
-    )
+    set_chat_webhook(session, project, WebhookType.SLACK, "https://hooks.example.test/secret")
     login_as(settings_world.member.email)
 
     page = client.get(f"/projects/{settings_world.project.slug}/settings")
@@ -267,9 +261,7 @@ def test_member_and_missing_csrf_cannot_start_github_connect(
 def test_github_setup_consumes_state_and_redirects_with_fresh_oauth_state(
     client, settings_world, session, login_as, configured_github
 ):
-    setup_state = issue_github_state(
-        session, settings_world.project.id, settings_world.owner.id
-    )
+    setup_state = issue_github_state(session, settings_world.project.id, settings_world.owner.id)
     login_as(settings_world.owner.email)
 
     response = client.get(
@@ -378,10 +370,13 @@ def test_github_oauth_callback_verifies_then_persists_and_issues_selection_state
         settings_world.owner.id,
         pending_installation_id=7001,
     )
-    assert client.get(
-        f"/integrations/github/callback?code=oauth-code&state={quote(replacement_state)}",
-        follow_redirects=False,
-    ).status_code == 303
+    assert (
+        client.get(
+            f"/integrations/github/callback?code=oauth-code&state={quote(replacement_state)}",
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
     session.expire_all()
     installations = session.exec(select(GitHubInstallation)).all()
     assert len(installations) == 1
@@ -431,12 +426,18 @@ def test_github_oauth_callback_rejects_replay_expiry_and_wrong_user(
         settings_world.owner.id,
         pending_installation_id=7001,
     )
-    assert client.get(
-        f"/integrations/github/callback?error=access_denied&state={quote(replay_state)}"
-    ).status_code == 200
-    assert client.get(
-        f"/integrations/github/callback?code=oauth-code&state={quote(replay_state)}"
-    ).status_code == 400
+    assert (
+        client.get(
+            f"/integrations/github/callback?error=access_denied&state={quote(replay_state)}"
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get(
+            f"/integrations/github/callback?code=oauth-code&state={quote(replay_state)}"
+        ).status_code
+        == 400
+    )
 
     expired_state = issue_github_state(
         session,
@@ -445,9 +446,12 @@ def test_github_oauth_callback_rejects_replay_expiry_and_wrong_user(
         pending_installation_id=7001,
         now=utcnow() - timedelta(minutes=11),
     )
-    assert client.get(
-        f"/integrations/github/callback?code=oauth-code&state={quote(expired_state)}"
-    ).status_code == 400
+    assert (
+        client.get(
+            f"/integrations/github/callback?code=oauth-code&state={quote(expired_state)}"
+        ).status_code
+        == 400
+    )
 
     wrong_user_state = issue_github_state(
         session,
@@ -457,9 +461,12 @@ def test_github_oauth_callback_rejects_replay_expiry_and_wrong_user(
     )
     client.post("/api/v1/auth/logout")
     login_as(settings_world.member.email)
-    assert client.get(
-        f"/integrations/github/callback?code=oauth-code&state={quote(wrong_user_state)}"
-    ).status_code == 403
+    assert (
+        client.get(
+            f"/integrations/github/callback?code=oauth-code&state={quote(wrong_user_state)}"
+        ).status_code
+        == 403
+    )
 
 
 def test_github_oauth_callback_verification_failure_persists_no_installation(
@@ -586,9 +593,7 @@ def test_github_repository_selection_post_refetches_and_trusts_only_server_metad
     _assert_state_used(session, github_selection.state, settings_world.owner)
     session.expire_all()
     rows = session.exec(
-        select(ProjectGitHubRepository).order_by(
-            ProjectGitHubRepository.github_repository_id
-        )
+        select(ProjectGitHubRepository).order_by(ProjectGitHubRepository.github_repository_id)
     ).all()
     assert [row.github_repository_id for row in rows] == [501, 502]
     assert [(row.full_name, row.html_url, row.default_branch) for row in rows] == [
@@ -603,20 +608,21 @@ def test_github_repository_selection_post_refetches_and_trusts_only_server_metad
         settings_world.owner.id,
         pending_installation_id=7001,
     )
-    assert client.post(
-        f"/projects/{settings_world.project.slug}/settings/integrations/github/repositories",
-        data={
-            "state": reduced_state,
-            "repository_ids": ["501"],
-            **_csrf(settings_world.owner),
-        },
-        follow_redirects=False,
-    ).status_code == 303
+    assert (
+        client.post(
+            f"/projects/{settings_world.project.slug}/settings/integrations/github/repositories",
+            data={
+                "state": reduced_state,
+                "repository_ids": ["501"],
+                **_csrf(settings_world.owner),
+            },
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
     session.expire_all()
     omitted = session.exec(
-        select(ProjectGitHubRepository).where(
-            ProjectGitHubRepository.github_repository_id == 502
-        )
+        select(ProjectGitHubRepository).where(ProjectGitHubRepository.github_repository_id == 502)
     ).one()
     assert omitted.active is False and omitted.disconnected_at is not None
 
@@ -626,15 +632,18 @@ def test_github_repository_selection_post_refetches_and_trusts_only_server_metad
         settings_world.owner.id,
         pending_installation_id=7001,
     )
-    assert client.post(
-        f"/projects/{settings_world.project.slug}/settings/integrations/github/repositories",
-        data={
-            "state": restored_state,
-            "repository_ids": ["501", "502"],
-            **_csrf(settings_world.owner),
-        },
-        follow_redirects=False,
-    ).status_code == 303
+    assert (
+        client.post(
+            f"/projects/{settings_world.project.slug}/settings/integrations/github/repositories",
+            data={
+                "state": restored_state,
+                "repository_ids": ["501", "502"],
+                **_csrf(settings_world.owner),
+            },
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
     session.refresh(omitted)
     assert omitted.active is True and omitted.disconnected_at is None
 
@@ -721,14 +730,17 @@ def test_github_repository_selection_rejects_forged_id_and_consumes_state(
     assert rejected.status_code == 422
     _assert_state_used(session, github_selection.state, settings_world.owner)
     assert session.exec(select(ProjectGitHubRepository)).all() == []
-    assert client.post(
-        f"/projects/{settings_world.project.slug}/settings/integrations/github/repositories",
-        data={
-            "state": github_selection.state,
-            "repository_ids": ["501"],
-            **_csrf(settings_world.owner),
-        },
-    ).status_code == 400
+    assert (
+        client.post(
+            f"/projects/{settings_world.project.slug}/settings/integrations/github/repositories",
+            data={
+                "state": github_selection.state,
+                "repository_ids": ["501"],
+                **_csrf(settings_world.owner),
+            },
+        ).status_code
+        == 400
+    )
 
 
 def test_github_repository_selection_rejects_oversized_decimal_id(
@@ -757,10 +769,13 @@ def test_github_repository_selection_requires_owner_and_csrf_without_consuming_s
     login_as(settings_world.member.email)
     assert client.get(f"{url}?state={quote(github_selection.state)}").status_code == 403
     login_as(settings_world.owner.email)
-    assert client.post(
-        url,
-        data={"state": github_selection.state, "repository_ids": ["501"]},
-    ).status_code == 403
+    assert (
+        client.post(
+            url,
+            data={"state": github_selection.state, "repository_ids": ["501"]},
+        ).status_code
+        == 403
+    )
     assert (
         read_github_state(session, github_selection.state, settings_world.owner.id).consumed_at
         is None
@@ -779,21 +794,22 @@ def test_github_repository_selection_binds_state_to_slug_project(
     url = f"/projects/{other_project.slug}/settings/integrations/github/repositories"
     login_as(settings_world.owner.email)
 
-    assert client.get(
-        f"{url}?state={quote(github_selection.state)}"
-    ).status_code == 400
+    assert client.get(f"{url}?state={quote(github_selection.state)}").status_code == 400
     assert (
         read_github_state(session, github_selection.state, settings_world.owner.id).consumed_at
         is None
     )
-    assert client.post(
-        url,
-        data={
-            "state": github_selection.state,
-            "repository_ids": ["501"],
-            **_csrf(settings_world.owner),
-        },
-    ).status_code == 400
+    assert (
+        client.post(
+            url,
+            data={
+                "state": github_selection.state,
+                "repository_ids": ["501"],
+                **_csrf(settings_world.owner),
+            },
+        ).status_code
+        == 400
+    )
     _assert_state_used(session, github_selection.state, settings_world.owner)
 
 
@@ -857,16 +873,22 @@ def test_github_disconnect_requires_owner_csrf_and_confirmation(
 ):
     url = f"/projects/{settings_world.project.slug}/settings/integrations/github/disconnect"
     login_as(settings_world.member.email)
-    assert client.post(
-        url,
-        data={"confirm": "Disconnect GitHub", **_csrf(settings_world.member)},
-    ).status_code == 403
+    assert (
+        client.post(
+            url,
+            data={"confirm": "Disconnect GitHub", **_csrf(settings_world.member)},
+        ).status_code
+        == 403
+    )
     login_as(settings_world.owner.email)
     assert client.post(url, data={"confirm": "Disconnect GitHub"}).status_code == 403
-    assert client.post(
-        url,
-        data={"confirm": "wrong", **_csrf(settings_world.owner)},
-    ).status_code == 422
+    assert (
+        client.post(
+            url,
+            data={"confirm": "wrong", **_csrf(settings_world.owner)},
+        ).status_code
+        == 422
+    )
     assert connected_github.active is True
 
     response = client.post(
@@ -895,9 +917,7 @@ def test_retry_sync_requires_owner_and_csrf(
     assert client.post(url, data=_csrf(settings_world.member)).status_code == 403
     login_as(settings_world.owner.email)
     assert client.post(url, data={}).status_code == 403
-    response = client.post(
-        url, data=_csrf(settings_world.owner), follow_redirects=False
-    )
+    response = client.post(url, data=_csrf(settings_world.owner), follow_redirects=False)
     assert response.status_code == 303
     assert response.headers["location"].endswith("?github_synced=1")
 
@@ -958,9 +978,7 @@ def test_retry_syncs_active_repositories_independently_without_reactivating_inac
     assert "Retry sync" in response.text
     with Session(engine) as observer:
         repositories = observer.exec(
-            select(ProjectGitHubRepository).order_by(
-                ProjectGitHubRepository.github_repository_id
-            )
+            select(ProjectGitHubRepository).order_by(ProjectGitHubRepository.github_repository_id)
         ).all()
         assert [row.active for row in repositories] == [True, True, False]
         artifacts = observer.exec(select(GitHubArtifact)).all()
@@ -999,7 +1017,7 @@ def test_github_attention_card_shows_member_status_and_names_without_controls_or
     assert "Save repositories" not in page.text
     assert "Disconnect GitHub" not in page.text
     assert "GitHub App settings not configured" not in page.text
-    assert 'settings/integrations/github' not in page.text
+    assert "settings/integrations/github" not in page.text
     assert "acme-inc" not in page.text
     assert "https://github.com/acme/api" not in page.text
     assert "7001" not in page.text and "501" not in page.text
@@ -1085,9 +1103,7 @@ def test_owner_renames_project_without_changing_its_slug(client, settings_world,
     assert (project.name, project.slug) == ("Checkout", "payment-gateway")
 
 
-def test_chat_webhook_validation_re_renders_settings_without_url(
-    client, settings_world, login_as
-):
+def test_chat_webhook_validation_re_renders_settings_without_url(client, settings_world, login_as):
     login_as(settings_world.owner.email)
 
     response = client.post(
@@ -1113,10 +1129,13 @@ def test_chat_integration_routes_are_owner_only_and_never_render_secret(
     disconnect_url = f"{member_url}/disconnect"
 
     login_as(settings_world.member.email)
-    assert client.post(
-        member_url,
-        data={"url": "https://hooks.example.test/x", **_csrf(settings_world.member)},
-    ).status_code == 403
+    assert (
+        client.post(
+            member_url,
+            data={"url": "https://hooks.example.test/x", **_csrf(settings_world.member)},
+        ).status_code
+        == 403
+    )
     member_page = client.get(f"/projects/{settings_world.project.slug}/settings")
     assert "Slack" in member_page.text
     assert "Connected" in member_page.text
@@ -1132,11 +1151,14 @@ def test_chat_integration_routes_are_owner_only_and_never_render_secret(
     assert "Configured" in owner_page.text
     assert 'name="url"' in owner_page.text
     assert secret not in owner_page.text
-    assert client.post(
-        disconnect_url,
-        data={"confirm": "Disconnect", **_csrf(settings_world.owner)},
-        follow_redirects=False,
-    ).status_code == 303
+    assert (
+        client.post(
+            disconnect_url,
+            data={"confirm": "Disconnect", **_csrf(settings_world.owner)},
+            follow_redirects=False,
+        ).status_code
+        == 303
+    )
     assert chat_webhooks(session, settings_world.project.id) == []
 
 

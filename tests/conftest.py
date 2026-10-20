@@ -1,3 +1,5 @@
+from datetime import date
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, SQLModel
@@ -90,9 +92,9 @@ def make_user(engine):
 
 @pytest.fixture
 def make_project(engine):
-    def _make(owner, name: str = "Payment Gateway"):
+    def _make(owner, name: str = "Payment Gateway", start_date: date = date(2026, 9, 21)):
         with Session(engine) as session:
-            return create_project(session, name, owner)
+            return create_project(session, name, start_date, owner)
 
     return _make
 

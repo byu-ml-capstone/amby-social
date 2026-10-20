@@ -38,9 +38,7 @@ def upgrade() -> None:
         ),
         sa.ForeignKeyConstraint(["project_id"], ["project.id"]),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "project_id", "provider", name="uq_project_chat_webhook_provider"
-        ),
+        sa.UniqueConstraint("project_id", "provider", name="uq_project_chat_webhook_provider"),
     )
     op.create_index(
         "ix_project_chat_webhook_project_id",
@@ -50,16 +48,20 @@ def upgrade() -> None:
     )
 
     connection = op.get_bind()
-    configured_rows = connection.execute(
-        sa.text(
-            """
+    configured_rows = (
+        connection.execute(
+            sa.text(
+                """
             SELECT id AS project_id, webhook_type AS provider, webhook_url AS url
             FROM project
             WHERE webhook_type != 'NONE' AND webhook_url IS NOT NULL
             ORDER BY id
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     copied_at = datetime.now(UTC).replace(tzinfo=None)
     for row in configured_rows:
         connection.execute(
@@ -105,9 +107,10 @@ def downgrade() -> None:
         )
 
     connection = op.get_bind()
-    configured_rows = connection.execute(
-        sa.text(
-            """
+    configured_rows = (
+        connection.execute(
+            sa.text(
+                """
             SELECT project_id, provider, url
             FROM project_chat_webhook
             ORDER BY project_id,
@@ -117,8 +120,11 @@ def downgrade() -> None:
                     WHEN 'DISCORD' THEN 2
                 END
             """
+            )
         )
-    ).mappings().all()
+        .mappings()
+        .all()
+    )
     restored_projects: set[str] = set()
     for row in configured_rows:
         if row["project_id"] in restored_projects:
@@ -135,7 +141,5 @@ def downgrade() -> None:
             row,
         )
 
-    op.drop_index(
-        "ix_project_chat_webhook_project_id", table_name="project_chat_webhook"
-    )
+    op.drop_index("ix_project_chat_webhook_project_id", table_name="project_chat_webhook")
     op.drop_table("project_chat_webhook")

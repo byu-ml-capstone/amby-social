@@ -232,7 +232,7 @@ def test_five_interactions_or_fewer(client, active_sprint, login_as):
     assert len(required) <= 2, "only title and type may be required"
 
 
-def test_backlog_without_open_sprints_hides_new_ticket_but_keeps_legacy_post(
+def test_new_project_initial_sprint_enables_ticket_creation(
     client, make_user, make_project, add_member, engine, login_as
 ):
     owner = make_user(email="ada@example.com")
@@ -252,7 +252,7 @@ def test_backlog_without_open_sprints_hides_new_ticket_but_keeps_legacy_post(
             select(Ticket).where(Ticket.project_id == project.id, Ticket.ticket_number == 1)
         ).one()
 
-    assert "New ticket" not in page.text
+    assert "New ticket" in page.text
     assert ">Backlog</option>" not in page.text
     assert response.status_code == 303
     assert ticket.sprint_id is None

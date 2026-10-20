@@ -127,8 +127,8 @@ def test_sprint_and_history_models(session, make_user, make_project):
     assert ticket.rollover_count == 0
 
 
-@pytest.mark.parametrize("status", [SprintStatus.PLANNING, SprintStatus.ACTIVE])
-def test_sprint_rejects_duplicate_open_statuses(session, make_user, make_project, status):
+def test_sprint_rejects_duplicate_active_statuses(session, make_user, make_project):
+    status = SprintStatus.ACTIVE
     owner = make_user()
     project = make_project(owner)
     session.add_all(
@@ -154,6 +154,21 @@ def test_sprint_rejects_duplicate_open_statuses(session, make_user, make_project
 
     with pytest.raises(IntegrityError):
         session.commit()
+
+
+def test_sprint_allows_multiple_planning_statuses(session, make_user, make_project):
+    project = make_project(make_user())
+    session.add(
+        Sprint(
+            project_id=project.id,
+            name="Another plan",
+            goal="",
+            status=SprintStatus.PLANNING,
+            start_date=date(2026, 10, 5),
+            end_date=date(2026, 10, 18),
+        )
+    )
+    session.commit()
 
 
 def test_sprint_allows_multiple_closed_statuses(session, make_user, make_project):

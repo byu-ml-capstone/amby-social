@@ -54,9 +54,7 @@ def test_project_api_does_not_expose_legacy_webhook_fields(
         json={"webhook_type": "SLACK", "webhook_url": "https://example.com/hook"},
     )
 
-    assert response.status_code == 200
-    assert "webhook_type" not in response.json()
-    assert "webhook_url" not in response.json()
+    assert response.status_code == 422
 
 
 def test_delete_requires_confirmation(client, make_user, make_project, login_as):
@@ -181,9 +179,7 @@ def test_whitespace_only_name_update_is_rejected(client, make_user, make_project
     assert client.get(f"/api/v1/projects/{project.slug}").json()["name"] == "Payment Gateway"
 
 
-def test_explicit_null_project_update_fields_are_ignored(
-    client, make_user, make_project, login_as
-):
+def test_explicit_null_project_update_fields_are_ignored(client, make_user, make_project, login_as):
     owner = make_user(email="ada@example.com")
     project = make_project(owner, name="Payment Gateway")
     login_as(owner.email)

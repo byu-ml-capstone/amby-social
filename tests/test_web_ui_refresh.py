@@ -96,14 +96,17 @@ def test_sprint_selector_contains_only_sprint_destinations(
     assert "Settings" not in selector
 
 
-def test_sprint_selector_is_absent_without_sprints(client, make_user, make_project, login_as):
+def test_new_project_sprint_selector_contains_initial_sprint(
+    client, make_user, make_project, login_as
+):
     owner = make_user(email="ada@example.com")
     project = make_project(owner)
     login_as(owner.email)
 
     page = client.get(f"/projects/{project.slug}/backlog")
 
-    assert 'class="sprint-selector"' not in page.text
+    assert 'class="sprint-selector"' in page.text
+    assert "Sprint 01" in page.text
 
 
 def test_settings_link_has_current_location_state(client, make_user, make_project, login_as):
@@ -125,7 +128,7 @@ def test_settings_link_has_current_location_state(client, make_user, make_projec
     assert "color: var(--text)" in active_style
 
 
-def test_backlog_has_one_primary_owner_action_without_a_planning_sprint(
+def test_backlog_has_one_primary_owner_action_with_initial_planning_sprint(
     client, make_user, make_project, login_as
 ):
     """Making both top-level backlog actions primary must make this fail."""
@@ -136,7 +139,7 @@ def test_backlog_has_one_primary_owner_action_without_a_planning_sprint(
     page = client.get(f"/projects/{project.slug}/backlog")
     header = re.search(r'<header class="project-header">.*?</header>', page.text, re.DOTALL).group()
 
-    assert 'x-ref="ticketModalOpener"' not in header
+    assert 'class="app-secondary-button" type="button" x-ref="ticketModalOpener"' in header
     assert 'class="app-primary-button" type="button" x-ref="sprintFormOpener"' in header
 
 
