@@ -63,6 +63,49 @@ def test_member_can_read_backlog_and_planning_state(client, backlog_world, add_m
     assert 'data-testid="owner-planning-controls"' not in page.text
 
 
+def test_owner_web_goal_edit_accepts_blank_and_valid_but_rejects_overlong(
+    client, backlog_world, engine, login_as
+):
+    login_as(backlog_world.owner.email)
+    url = f"/projects/{backlog_world.project.slug}/sprints/{backlog_world.sprint.id}/goal"
+
+    blank = client.post(
+        url,
+        data={"goal": "   ", "_csrf": make_csrf_token(backlog_world.owner.id)},
+        follow_redirects=False,
+    )
+    valid = client.post(
+        url,
+        data={"goal": "  Ship safely  ", "_csrf": make_csrf_token(backlog_world.owner.id)},
+        follow_redirects=False,
+    )
+    overlong = client.post(
+        url,
+        data={"goal": "x" * 2001, "_csrf": make_csrf_token(backlog_world.owner.id)},
+        follow_redirects=False,
+    )
+
+    assert blank.status_code == 303
+    assert valid.status_code == 303
+    assert overlong.status_code == 422
+    with Session(engine) as session:
+        assert session.get(Sprint, backlog_world.sprint.id).goal == "Ship safely"
+
+
+def test_member_cannot_edit_planning_goal(client, backlog_world, add_member, engine, login_as):
+    add_member(backlog_world.project, backlog_world.member)
+    login_as(backlog_world.member.email)
+
+    response = client.post(
+        f"/projects/{backlog_world.project.slug}/sprints/{backlog_world.sprint.id}/goal",
+        data={"goal": "Unauthorized", "_csrf": make_csrf_token(backlog_world.member.id)},
+    )
+
+    assert response.status_code == 403
+    with Session(engine) as session:
+        assert session.get(Sprint, backlog_world.sprint.id).goal == "Ship it"
+
+
 def test_unscheduled_section_only_lists_unassigned_tickets(client, backlog_world, login_as):
     login_as(backlog_world.owner.email)
 
@@ -249,7 +292,7 @@ def test_planning_backlog_prioritizes_start_and_hides_empty_selection_action(
 
     assert "Unscheduled tickets" in page
     assert ">Queue<" not in page
-    assert ">Add sprint</button>" not in page
+    assert ">Add sprint</button>" in page
     assert ">Start sprint</button>" in page
     assert 'x-show="selectedCount > 0"' in page
     assert ':disabled="selectedCount === 0"' in page
@@ -267,20 +310,14 @@ def test_backlog_hides_unscheduled_section_when_empty(client, make_user, make_pr
     assert "No unassigned tickets." not in page
 
 
-def test_owner_creates_a_dated_planning_sprint(client, make_user, make_project, login_as):
+def test_owner_creates_a_generated_planning_sprint(client, make_user, make_project, login_as):
     owner = make_user(email="ada@example.com")
     project = make_project(owner)
     login_as(owner.email)
 
     response = client.post(
         f"/projects/{project.slug}/sprints",
-        data={
-            "name": "Sprint 1",
-            "goal": "Ship it",
-            "start_date": "2026-09-21",
-            "end_date": "2026-09-28",
-            "_csrf": make_csrf_token(owner.id),
-        },
+        data={"count": "1", "_csrf": make_csrf_token(owner.id)},
         follow_redirects=False,
     )
 
@@ -288,44 +325,33 @@ def test_owner_creates_a_dated_planning_sprint(client, make_user, make_project, 
     assert response.headers["location"] == f"/projects/{project.slug}/backlog"
 
 
-def test_second_planning_sprint_returns_backlog_conflict(client, backlog_world, login_as):
+def test_owner_can_add_another_planning_sprint(client, backlog_world, login_as):
     login_as(backlog_world.owner.email)
 
     response = client.post(
         f"/projects/{backlog_world.project.slug}/sprints",
-        data={
-            "name": "Sprint 2",
-            "goal": "More work",
-            "start_date": "2026-09-29",
-            "end_date": "2026-10-06",
-            "_csrf": make_csrf_token(backlog_world.owner.id),
-        },
+        data={"count": "1", "_csrf": make_csrf_token(backlog_world.owner.id)},
     )
 
-    assert response.status_code == 409
-    assert "A planning sprint already exists" in response.text
+    assert response.status_code == 200
+    assert "Sprint 03" in response.text
 
 
-def test_invalid_sprint_dates_return_a_stable_form_error(client, make_user, make_project, login_as):
+def test_invalid_sprint_count_returns_a_stable_form_error(
+    client, make_user, make_project, login_as
+):
     owner = make_user(email="ada@example.com")
     project = make_project(owner)
     login_as(owner.email)
 
     response = client.post(
         f"/projects/{project.slug}/sprints",
-        data={
-            "name": "Sprint 1",
-            "goal": "Ship it",
-            "start_date": "2026-09-28",
-            "end_date": "2026-09-21",
-            "_csrf": make_csrf_token(owner.id),
-        },
+        data={"count": "6", "_csrf": make_csrf_token(owner.id)},
     )
 
     assert response.status_code == 422
-    assert "end_date must be after start_date" in response.text
-    for value in ("Sprint 1", "Ship it", "2026-09-28", "2026-09-21"):
-        assert value in response.text
+    assert "less than or equal to 5" in response.text
+    assert 'value="6"' in response.text
 
 
 def test_owner_assigns_multiple_unassigned_tickets_to_planning_sprint(
@@ -419,4 +445,4 @@ def test_member_cannot_create_or_assign_sprints(client, backlog_world, add_membe
     )
 
     assert create.status_code == 403
-    assert assign.status_code == 403
+    assert assign.status_code == 200

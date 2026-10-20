@@ -85,21 +85,22 @@ def endpoints(world):
             FORM,
             "post",
             f"/projects/{world['sprint_web_create_project'].slug}/sprints",
-            {
-                "data": {
-                    "name": "Created Sprint",
-                    "goal": "Ship",
-                    "start_date": "2026-09-21",
-                    "end_date": "2026-09-28",
-                }
-            },
+            {"data": {"count": 1}},
+        ),
+        (
+            ANY_MEMBER,
+            FORM,
+            "post",
+            f"/projects/{world['sprint_start_project'].slug}/sprints/{world['planning_sprint'].id}/tickets",
+            {"data": {"ticket_ids": world["planning_ticket"].id}},
         ),
         (
             OWNER_ONLY,
             FORM,
             "post",
-            f"/projects/{world['sprint_start_project'].slug}/sprints/{world['planning_sprint'].id}/tickets",
-            {"data": {"ticket_ids": world["planning_ticket"].id}},
+            f"/projects/{world['sprint_web_start_project'].slug}/sprints/"
+            f"{world['web_planning_sprint'].id}/goal",
+            {"data": {"goal": "Updated web goal"}},
         ),
         (
             OWNER_ONLY,
@@ -113,14 +114,7 @@ def endpoints(world):
             JSON,
             "post",
             f"/api/v1/projects/{world['sprint_create_project'].slug}/sprints",
-            {
-                "json": {
-                    "name": "Created Sprint",
-                    "goal": "Ship",
-                    "start_date": "2026-09-21",
-                    "end_date": "2026-09-28",
-                }
-            },
+            {"json": {"count": 1}},
         ),
         (
             OWNER_ONLY,
@@ -134,14 +128,14 @@ def endpoints(world):
             JSON,
             "post",
             f"/api/v1/sprints/{world['active_sprint'].id}/close",
-            {"json": {"next_sprint_id": world["next_sprint"].id}},
+            {"json": {}},
         ),
         (
             OWNER_ONLY,
             FORM,
             "post",
             f"/projects/{world['sprint_web_close_project'].slug}/sprints/{world['web_active_sprint'].id}/close",
-            {"data": {"next_sprint_id": world["web_next_sprint"].id}},
+            {"data": {}},
         ),
         # -- OWNER_ONLY: ticket delete, project settings, membership, project delete --
         (OWNER_ONLY, JSON, "delete", f"/api/v1/tickets/{ticket_id}", {}),
@@ -187,6 +181,20 @@ def world(client, session, make_user, make_project, add_member, login_as):
         sprint_web_close_project,
     ]:
         add_member(current_project, member)
+    for generated in session.exec(
+        select(Sprint).where(
+            Sprint.project_id.in_(
+                [
+                    sprint_start_project.id,
+                    sprint_close_project.id,
+                    sprint_web_start_project.id,
+                    sprint_web_close_project.id,
+                ]
+            )
+        )
+    ).all():
+        session.delete(generated)
+    session.flush()
     planning_sprint = Sprint(
         project_id=sprint_start_project.id,
         name="Planning Sprint",
@@ -344,7 +352,7 @@ def snapshot(engine, project_slug, ticket_id):
                 for t in tickets
             ),
             "sprints": sorted(
-                (s.id, s.status, s.committed_points, s.completed_points, s.closed_at)
+                (s.id, s.goal, s.status, s.committed_points, s.completed_points, s.closed_at)
                 for s in sprints
             ),
             "history": sorted(
@@ -368,8 +376,22 @@ def test_snapshot_captures_sprint_lifecycle_state(engine, world):
 
     assert state["sprints"] == sorted(
         [
-            (world["active_sprint"].id, SprintStatus.ACTIVE, None, None, None),
-            (world["next_sprint"].id, SprintStatus.PLANNING, None, None, None),
+            (
+                world["active_sprint"].id,
+                "Close me",
+                SprintStatus.ACTIVE,
+                None,
+                None,
+                None,
+            ),
+            (
+                world["next_sprint"].id,
+                "Receive tickets",
+                SprintStatus.PLANNING,
+                None,
+                None,
+                None,
+            ),
         ]
     )
     assert state["ticket_lifecycle"] == sorted(

@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ project.name }} Backlog · Kanban Flow{% endblock %}
 {% block content %}
-<div class="project-board" x-data="{ ticketError: '', selectedCount: 0, ticketOpener: null }" @ticket-drawer-closed.window="$nextTick(() => document.getElementById(`ticket-${ticketOpener}`)?.querySelector('[data-ticket-edit]')?.focus())"{% if sprint_form_open %} x-init="$nextTick(() => $refs.sprintForm.showModal())"{% elif start_form_open %} x-init="$nextTick(() => $refs.startForm.showModal())"{% endif %}>
+<div class="project-board" x-data="{ ticketError: '', selectedCount: 0, ticketOpener: null }" @ticket-drawer-closed.window="$nextTick(() => document.getElementById(`ticket-${ticketOpener}`)?.querySelector('[data-ticket-edit]')?.focus())"{% if sprint_form_open %} x-init="$nextTick(() => $refs.sprintForm.showModal())"{% endif %}>
   <header class="project-header">
     <div>
       <h1 class="project-title">{{ project.name }}</h1>
@@ -17,36 +17,33 @@
       {% if destination_sprints %}
       <button class="app-secondary-button" type="button" x-ref="ticketModalOpener" @click="$refs.ticketModal.showModal(); $nextTick(() => $refs.ticketTitle.focus())">New ticket</button>
       {% endif %}
-      {% if role == 'OWNER' and not planning_sprint %}
+      {% if role == 'OWNER' %}
       <button class="app-primary-button" type="button" x-ref="sprintFormOpener" @click="$refs.sprintForm.showModal()">Add sprint</button>
       {% endif %}
     </div>
   </header>
 
   {% include "partials/project_nav.html" %}
+  {% if start_error %}<p class="form-error" role="alert">{{ start_error }}</p>{% endif %}
 
-  {% if planning_sprint %}
-  <section class="backlog-planning-sprint" aria-labelledby="planning-heading">
+  {% for group in planning_groups %}
+  {% set planned = group.sprint %}
+  <section class="backlog-planning-sprint" aria-labelledby="planning-heading-{{ planned.id }}">
     <div>
-      <h2 id="planning-heading">{{ planning_sprint.name }} <span class="sprint-status">Planning</span></h2>
-      <p class="sprint-meta">{{ planning_sprint.start_date.strftime('%b %-d') }} – {{ planning_sprint.end_date.strftime('%b %-d, %Y') }}{% if planning_sprint.goal %} · {{ planning_sprint.goal }}{% endif %}</p>
-      <p class="sprint-meta">{{ planning_ticket_count }} ticket{{ '' if planning_ticket_count == 1 else 's' }} · {{ planning_points }} point{{ '' if planning_points == 1 else 's' }} · {{ planning_unestimated_count }} unestimated</p>
-      {% if recent_velocity is not none and planning_points > recent_velocity %}<p class="form-error">Above recent velocity: {{ planning_points }} planned / {{ recent_velocity }} average</p>{% endif %}
+      <h2 id="planning-heading-{{ planned.id }}">{{ planned.name }} <span class="sprint-status">Planning</span></h2>
+      <p class="sprint-meta">{{ planned.start_date.strftime('%b %-d') }} – {{ planned.end_date.strftime('%b %-d, %Y') }}{% if planned.goal %} · {{ planned.goal }}{% endif %}</p>
+      <p class="sprint-meta">{{ group.ticket_count }} ticket{{ '' if group.ticket_count == 1 else 's' }} · {{ group.points }} point{{ '' if group.points == 1 else 's' }} · {{ group.unestimated_count }} unestimated</p>
+      {% if recent_velocity is not none and group.points > recent_velocity %}<p class="form-error">Above recent velocity: {{ group.points }} planned / {{ recent_velocity }} average</p>{% endif %}
+      {% if role == 'OWNER' %}<form action="/projects/{{ project.slug }}/sprints/{{ planned.id }}/goal" method="post" class="app-form"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><label>Goal <input name="goal" maxlength="2000" value="{{ planned.goal }}"></label><button class="app-secondary-button">Save goal</button></form>{% endif %}
     </div>
-    {% if role == 'OWNER' %}<button class="app-primary-button" type="button" x-ref="startFormOpener" @click="$refs.startForm.showModal()">Start sprint</button>{% endif %}
+    {% if role == 'OWNER' and loop.first %}<form action="/projects/{{ project.slug }}/sprints/{{ planned.id }}/start" method="post"><input type="hidden" name="_csrf" value="{{ csrf_token }}"><button class="app-primary-button">Start sprint</button></form>{% endif %}
   </section>
-  {% if planning_tickets %}
-  <section class="backlog-list planning-ticket-list" aria-labelledby="planning-tickets-heading">
-    <div class="backlog-list-header"><h2 id="planning-tickets-heading">Committed work</h2></div>
-    {% for ticket in planning_tickets %}
-    <div class="backlog-ticket">
-      <a class="backlog-ticket-open" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"><span class="ticket-number">{{ project.key }}-{{ ticket.ticket_number }}</span> {{ ticket.title }}</a>
-      <span class="sprint-meta">{{ ticket.story_points ~ ' pts' if ticket.story_points is not none else 'Unestimated' }}</span>
-    </div>
-    {% endfor %}
+  {% if group.tickets %}
+  <section class="backlog-list planning-ticket-list" aria-label="{{ planned.name }} committed work">
+    {% for ticket in group.tickets %}<div class="backlog-ticket"><a class="backlog-ticket-open" href="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}"><span class="ticket-number">{{ project.key }}-{{ ticket.ticket_number }}</span> {{ ticket.title }}</a><span class="sprint-meta">{{ ticket.story_points ~ ' pts' if ticket.story_points is not none else 'Unestimated' }}</span></div>{% endfor %}
   </section>
   {% endif %}
-  {% endif %}
+  {% endfor %}
 
   {% if tickets or q or priority_filter or type_filter %}
   <section class="backlog-list" aria-labelledby="backlog-heading">
@@ -58,13 +55,14 @@
       <button class="app-secondary-button">Filter</button>
     </form>
     <div id="backlog-tickets">
-    {% if role == 'OWNER' and planning_sprint %}
-    <form class="backlog-selection" action="/projects/{{ project.slug }}/sprints/{{ planning_sprint.id }}/tickets" method="post" @change="selectedCount = $el.querySelectorAll('input[name=ticket_ids]:checked').length" @submit.prevent="if (!selectedCount) return; $el.submit()">
+    {% if planning_sprints %}
+    <form class="backlog-selection" x-data="{ destination: '{{ planning_sprints[0].id }}' }" :action="`/projects/{{ project.slug }}/sprints/${destination}/tickets`" method="post" @change="selectedCount = $el.querySelectorAll('input[name=ticket_ids]:checked').length" @submit.prevent="if (!selectedCount) return; $el.submit()">
       <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label>Plan in <select x-model="destination">{% for planned in planning_sprints %}<option value="{{ planned.id }}">{{ planned.name }}</option>{% endfor %}</select></label>
     {% endif %}
       {% for ticket in tickets %}
       <div id="ticket-{{ ticket.id }}" class="backlog-ticket">
-        {% if role == 'OWNER' and planning_sprint %}
+        {% if planning_sprints %}
         <input type="checkbox" name="ticket_ids" value="{{ ticket.id }}" aria-label="Select ticket {{ project.key }}-{{ ticket.ticket_number }}">
         {% endif %}
         <button type="button" class="backlog-ticket-open" data-ticket-edit @click="ticketOpener = '{{ ticket.id }}'" hx-get="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}" hx-target="#ticket-detail-root" hx-swap="innerHTML"><span class="ticket-number">{{ project.key }}-{{ ticket.ticket_number }}</span> {{ ticket.title }}</button>
@@ -79,7 +77,7 @@
       {% else %}
       <p class="app-empty-state">No matching tickets.</p>
       {% endfor %}
-    {% if role == 'OWNER' and planning_sprint %}
+    {% if planning_sprints %}
       <button class="app-secondary-button" type="submit" x-show="selectedCount > 0" x-cloak :disabled="selectedCount === 0">Add selected</button>
     </form>
     {% endif %}
@@ -96,11 +94,6 @@
   <dialog x-ref="sprintForm" class="app-dialog" aria-labelledby="sprint-form-heading" @close="$refs.sprintFormOpener.focus()">
     {% include "partials/sprint_form.html" %}
   </dialog>
-  {% if planning_sprint %}
-  <dialog x-ref="startForm" class="app-dialog" aria-labelledby="sprint-start-heading" @cancel="$event.preventDefault(); $el.close()" @close="$refs.startFormOpener.focus()">
-    {% include "partials/sprint_start.html" %}
-  </dialog>
-  {% endif %}
   {% endif %}
 </div>
 {% endblock %}

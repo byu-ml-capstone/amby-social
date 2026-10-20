@@ -71,9 +71,9 @@ def main() -> None:
                 font_urls = []
                 page.on(
                     "request",
-                    lambda request: font_urls.append(request.url)
-                    if request.resource_type == "font"
-                    else None,
+                    lambda request: (
+                        font_urls.append(request.url) if request.resource_type == "font" else None
+                    ),
                 )
                 page.set_default_timeout(5_000)
                 page.set_default_navigation_timeout(5_000)
@@ -112,9 +112,7 @@ def main() -> None:
                 page.goto(f"{base_url}{board_url}")
                 page.evaluate("document.fonts.ready")
                 assert page.evaluate("document.fonts.check('700 32px Kalam')")
-                assert page.evaluate(
-                    "document.fonts.check('400 18px \"Patrick Hand\"')"
-                )
+                assert page.evaluate("document.fonts.check('400 18px \"Patrick Hand\"')")
                 assert page.locator(".project-board").evaluate(
                     "el => getComputedStyle(el).backgroundSize === '24px 24px'"
                 )
@@ -124,9 +122,7 @@ def main() -> None:
                 _step("creating ticket")
                 page.get_by_role("button", name="New ticket").click()
                 page.locator("#ticket-title").fill("Keep focus")
-                page.locator("#ticket-description").fill(
-                    "[Focus link](https://example.com)"
-                )
+                page.locator("#ticket-description").fill("[Focus link](https://example.com)")
                 page.locator("#ticket-modal .app-primary-button").click()
                 card = page.locator(".ticket-card-open").first
                 card.wait_for()
@@ -143,9 +139,7 @@ def main() -> None:
                     == "app-dialog ticket-detail-modal sketch-ticket-detail"
                 )
                 heading = page.locator("#ticket-detail-heading")
-                assert heading.evaluate(
-                    "el => el === document.activeElement"
-                )
+                assert heading.evaluate("el => el === document.activeElement")
                 focus_style = """el => {
                     const style = getComputedStyle(el);
                     return [style.outlineWidth, style.outlineColor, style.outlineOffset];
@@ -180,13 +174,9 @@ def main() -> None:
                 mention_menu.wait_for(state="visible")
                 comment_input.press("Enter")
                 assert comment_input.input_value() == "@Ada "
-                assert page.locator(
-                    '.ticket-comment-form input[name="mention_ids"]'
-                ).count() == 1
+                assert page.locator('.ticket-comment-form input[name="mention_ids"]').count() == 1
                 comment_input.fill("Ready for review")
-                assert page.locator(
-                    '.ticket-comment-form input[name="mention_ids"]'
-                ).count() == 0
+                assert page.locator('.ticket-comment-form input[name="mention_ids"]').count() == 0
                 comment_input.fill("@Ad")
                 mention_menu.wait_for(state="visible")
                 comment_input.press("Enter")

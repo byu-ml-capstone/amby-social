@@ -57,7 +57,7 @@ def closed_world(engine, make_user, make_project, add_member):
             ticket.status = ticket_status
             session.add(ticket)
         session.commit()
-        close_sprint(session, session.get(Sprint, sprint.id), session.get(Sprint, next_sprint.id))
+        close_sprint(session, session.get(Sprint, sprint.id))
         return {
             "owner": owner,
             "member": member,

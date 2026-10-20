@@ -47,7 +47,10 @@ def test_slugify(name, expected):
 def test_create_project_makes_the_creator_an_owner(client, make_user, login_as):
     make_user(email="ada@example.com")
     login_as("ada@example.com")
-    response = client.post("/api/v1/projects", json={"name": "Payment Gateway"})
+    response = client.post(
+        "/api/v1/projects",
+        json={"name": "Payment Gateway", "start_date": "2026-09-21"},
+    )
     assert response.status_code == 201
     body = response.json()
     assert body["slug"] == "payment-gateway"
@@ -57,8 +60,14 @@ def test_create_project_makes_the_creator_an_owner(client, make_user, login_as):
 def test_duplicate_slug_returns_409(client, make_user, login_as):
     make_user(email="ada@example.com")
     login_as("ada@example.com")
-    client.post("/api/v1/projects", json={"name": "Payment Gateway"})
-    response = client.post("/api/v1/projects", json={"name": "payment gateway"})
+    client.post(
+        "/api/v1/projects",
+        json={"name": "Payment Gateway", "start_date": "2026-09-21"},
+    )
+    response = client.post(
+        "/api/v1/projects",
+        json={"name": "payment gateway", "start_date": "2026-09-21"},
+    )
     assert response.status_code == 409
     assert "payment-gateway" in response.text
 
@@ -66,14 +75,19 @@ def test_duplicate_slug_returns_409(client, make_user, login_as):
 def test_unslugifiable_name_returns_422(client, make_user, login_as):
     make_user(email="ada@example.com")
     login_as("ada@example.com")
-    assert client.post("/api/v1/projects", json={"name": "!!!"}).status_code == 422
+    assert (
+        client.post(
+            "/api/v1/projects", json={"name": "!!!", "start_date": "2026-09-21"}
+        ).status_code
+        == 422
+    )
 
 
 def test_project_list_shows_only_projects_you_belong_to(client, make_user, login_as):
     make_user(email="ada@example.com")
     make_user(email="bob@example.com")
     login_as("ada@example.com")
-    client.post("/api/v1/projects", json={"name": "Ada Project"})
+    client.post("/api/v1/projects", json={"name": "Ada Project", "start_date": "2026-09-21"})
 
     own_projects = client.get("/api/v1/projects").json()
     assert len(own_projects) == 1
@@ -89,14 +103,17 @@ def test_non_member_gets_404_on_project_detail(client, make_user, login_as):
     make_user(email="ada@example.com")
     make_user(email="bob@example.com")
     login_as("ada@example.com")
-    client.post("/api/v1/projects", json={"name": "Ada Project"})
+    client.post("/api/v1/projects", json={"name": "Ada Project", "start_date": "2026-09-21"})
     client.post("/api/v1/auth/logout")
     login_as("bob@example.com")
     assert client.get("/api/v1/projects/ada-project").status_code == 404
 
 
 def test_anonymous_request_is_401(client):
-    assert client.post("/api/v1/projects", json={"name": "X"}).status_code == 401
+    assert (
+        client.post("/api/v1/projects", json={"name": "X", "start_date": "2026-09-21"}).status_code
+        == 401
+    )
 
 
 def test_owner_deletes_project_with_sprint_history(
@@ -252,6 +269,9 @@ def test_concurrent_project_creation_race_returns_409_not_500(
 
     monkeypatch.setattr(Session, "exec", exec_then_insert_racer)
 
-    response = client.post("/api/v1/projects", json={"name": "Payment Gateway"})
+    response = client.post(
+        "/api/v1/projects",
+        json={"name": "Payment Gateway", "start_date": "2026-09-21"},
+    )
     assert response.status_code == 409
     assert "payment-gateway" in response.text

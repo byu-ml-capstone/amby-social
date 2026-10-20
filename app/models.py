@@ -140,6 +140,7 @@ class Project(SQLModel, table=True):
     slug: str = Field(max_length=50, unique=True, index=True)
     key: str = Field(max_length=10, unique=True, index=True)
     next_ticket_number: int = Field(default=1)
+    start_date: date = Field(default_factory=date.today)
     created_at: datetime = Field(default_factory=utcnow)
 
 
@@ -241,12 +242,6 @@ class Sprint(SQLModel, table=True):
             "project_id",
             unique=True,
             sqlite_where=text("status = 'ACTIVE'"),
-        ),
-        Index(
-            "uq_sprint_planning_project",
-            "project_id",
-            unique=True,
-            sqlite_where=text("status = 'PLANNING'"),
         ),
     )
 

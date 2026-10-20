@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from app.auth import make_csrf_token
 from app.models import Project, ProjectMember, Sprint, SprintStatus, TicketStatus, User
+from app.services import sprint_chronology
 
 COLUMNS = (
     TicketStatus.BACKLOG,
@@ -34,9 +35,11 @@ def render(
                 SprintStatus.PLANNING: 1,
                 SprintStatus.CLOSED: 2,
             }
+            chronological = session.exec(
+                select(Sprint).where(Sprint.project_id == project.id).order_by(*sprint_chronology())
+            ).all()
             shell_context["sprint_options"] = sorted(
-                session.exec(select(Sprint).where(Sprint.project_id == project.id)).all(),
-                key=lambda sprint: (status_order[sprint.status], sprint.start_date),
+                chronological, key=lambda sprint: status_order[sprint.status]
             )
             shell_context["current_sprint"] = next(
                 (

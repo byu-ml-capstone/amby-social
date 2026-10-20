@@ -32,12 +32,8 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["ticket_id"], ["ticket.id"]),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_ticket_comment_author_id", "ticket_comment", ["author_id"], unique=False
-    )
-    op.create_index(
-        "ix_ticket_comment_ticket_id", "ticket_comment", ["ticket_id"], unique=False
-    )
+    op.create_index("ix_ticket_comment_author_id", "ticket_comment", ["author_id"], unique=False)
+    op.create_index("ix_ticket_comment_ticket_id", "ticket_comment", ["ticket_id"], unique=False)
 
 
 def downgrade() -> None:

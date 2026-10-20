@@ -22,7 +22,13 @@ from app.schemas import (
     SprintReportUpdate,
     SprintUpdate,
 )
-from app.services import close_sprint, create_sprint, start_sprint, update_sprint
+from app.services import (
+    close_sprint,
+    create_sprints,
+    sprint_chronology,
+    start_sprint,
+    update_sprint,
+)
 from app.sprint_reports import build_payload, finalize_report, get_report, save_report
 
 router = APIRouter(prefix="/api/v1", tags=["sprints"])
@@ -52,20 +58,20 @@ def list_sprints(
 ) -> list[Sprint]:
     project, _ = access
     return session.exec(
-        select(Sprint).where(Sprint.project_id == project.id).order_by(Sprint.start_date.desc())
+        select(Sprint).where(Sprint.project_id == project.id).order_by(*sprint_chronology())
     ).all()
 
 
 @router.post(
-    "/projects/{slug}/sprints", response_model=SprintOut, status_code=status.HTTP_201_CREATED
+    "/projects/{slug}/sprints", response_model=list[SprintOut], status_code=status.HTTP_201_CREATED
 )
 def post_sprint(
     body: SprintCreate,
     access: tuple[Project, ProjectMember] = Depends(project_owner),
     session: Session = Depends(get_session),
-) -> Sprint:
+) -> list[Sprint]:
     project, _ = access
-    return create_sprint(session, project, **body.model_dump())
+    return create_sprints(session, project, body.count)
 
 
 @router.get("/sprints/{sprint_id}", response_model=SprintOut)
@@ -104,10 +110,7 @@ def post_close_sprint(
     session: Session = Depends(get_session),
 ) -> Sprint:
     sprint = _sprint_access(sprint_id, user, session, owner=True)
-    next_sprint = session.get(Sprint, body.next_sprint_id)
-    if next_sprint is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sprint not found")
-    return close_sprint(session, sprint, next_sprint)
+    return close_sprint(session, sprint)
 
 
 @router.get("/sprints/{sprint_id}/history", response_model=list[SprintHistoryOut])

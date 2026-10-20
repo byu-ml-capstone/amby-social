@@ -3,7 +3,8 @@ import json
 import re
 import socket
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, timedelta
+from string import Formatter
 from urllib.parse import urlparse
 
 from fastapi import BackgroundTasks, HTTPException, status
@@ -122,7 +123,7 @@ def register_user(session: Session, *, name: str, email: str, password: str) -> 
     return user
 
 
-def create_project(session: Session, name: str, user: User) -> Project:
+def create_project(session: Session, name: str, start_date: date, user: User) -> Project:
     # Shared by the JSON route (app/routers/api_projects.py) and the dashboard
     # form (app/routers/web.py) so slug derivation, the collision pre-check, the
     # IntegrityError race guard (Ruling R16), and the creator-becomes-OWNER
@@ -145,11 +146,12 @@ def create_project(session: Session, name: str, user: User) -> Project:
         raise HTTPException(status.HTTP_409_CONFLICT, _slug_conflict_detail(slug))
     key = allocate_project_key(session, clean_name)
     while True:
-        project = Project(name=clean_name, slug=slug, key=key)
+        project = Project(name=clean_name, slug=slug, key=key, start_date=start_date)
         session.add(project)
         try:
             session.flush()
             session.add(ProjectMember(project_id=project.id, user_id=user.id, role=Role.OWNER))
+            session.add(_build_sprint(project, 1, first_sprint_date(start_date)))
             session.commit()
         except IntegrityError as exc:
             session.rollback()
@@ -160,6 +162,9 @@ def create_project(session: Session, name: str, user: User) -> Project:
             # pass the pre-check above; the unique constraint on Project.slug
             # catches the loser here (Ruling R16).
             raise HTTPException(status.HTTP_409_CONFLICT, _slug_conflict_detail(slug)) from None
+        except Exception:
+            session.rollback()
+            raise
         session.refresh(project)
         return project
 
@@ -437,87 +442,141 @@ def delete_project(session: Session, project: Project, confirm: str) -> None:
     attachments.delete_project_files(project_id)
 
 
-def create_sprint(
-    session: Session,
-    project: Project,
-    *,
-    name: str,
-    goal: str,
-    start_date: date,
-    end_date: date,
-) -> Sprint:
-    if end_date <= start_date:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "end_date must be after start_date"
-        )
-    if session.exec(
-        select(Sprint).where(
-            Sprint.project_id == project.id,
-            Sprint.status == SprintStatus.PLANNING,
-        )
-    ).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, _PLANNING_SPRINT_EXISTS)
-    sprint = Sprint(
-        project_id=project.id,
-        name=name,
-        goal=goal,
-        start_date=start_date,
-        end_date=end_date,
-    )
-    session.add(sprint)
+def first_sprint_date(project_date: date) -> date:
+    return project_date + timedelta(days=(-project_date.weekday()) % 7)
+
+
+def sprint_chronology():
+    return (Sprint.start_date, Sprint.end_date, Sprint.id)
+
+
+def _format_sprint_name(number: int) -> str:
     try:
+        fields = [
+            field_name
+            for _, field_name, _, _ in Formatter().parse(settings.sprint_name_pattern)
+            if field_name is not None
+        ]
+        if any(field_name != "number" for field_name in fields):
+            raise ValueError
+        name = settings.sprint_name_pattern.format(number=number).strip()
+    except (IndexError, KeyError, ValueError) as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Invalid sprint name pattern"
+        ) from exc
+    if not name or len(name) > 100:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "Generated sprint name must be between 1 and 100 characters",
+        )
+    return name
+
+
+def _build_sprint(project: Project, number: int, start_date: date) -> Sprint:
+    return Sprint(
+        project_id=project.id,
+        name=_format_sprint_name(number),
+        goal="",
+        start_date=start_date,
+        end_date=start_date + timedelta(days=13),
+    )
+
+
+def _claim_project(session: Session, project_id: str):
+    session.exec(
+        update(Project)
+        .where(Project.id == project_id)
+        .values(next_ticket_number=Project.next_ticket_number)
+    )
+
+
+def create_sprints(session: Session, project: Project, count: int = 1) -> list[Sprint]:
+    if not 1 <= count <= 5:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "count must be between 1 and 5")
+    try:
+        _claim_project(session, project.id)
+        existing = session.exec(
+            select(Sprint).where(Sprint.project_id == project.id).order_by(*sprint_chronology())
+        ).all()
+        start = (
+            existing[-1].start_date + timedelta(days=14)
+            if existing
+            else first_sprint_date(project.start_date)
+        )
+        created = [
+            _build_sprint(project, len(existing) + offset + 1, start + timedelta(days=14 * offset))
+            for offset in range(count)
+        ]
+        session.add_all(created)
         session.commit()
-    except IntegrityError:
+    except HTTPException:
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, _PLANNING_SPRINT_EXISTS) from None
-    session.refresh(sprint)
-    return sprint
+        raise
+    except (IntegrityError, OperationalError):
+        session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, _SPRINT_UPDATE_CONFLICT) from None
+    except Exception:
+        session.rollback()
+        raise
+    for sprint in created:
+        session.refresh(sprint)
+    return created
 
 
 def update_sprint(session: Session, sprint: Sprint, **changes) -> Sprint:
     if sprint.status is not SprintStatus.PLANNING:
         raise HTTPException(status.HTTP_409_CONFLICT, "Sprint must be planning")
-    for field in ("name", "goal", "start_date", "end_date"):
-        if field in changes and changes[field] is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"{field} may not be null")
-    start_date = changes.get("start_date", sprint.start_date)
-    end_date = changes.get("end_date", sprint.end_date)
-    if end_date <= start_date:
+    if set(changes) - {"goal"} or changes.get("goal") is None:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Only goal may be changed")
+    goal = changes["goal"].strip()
+    if len(goal) > 2000:
         raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "end_date must be after start_date"
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "goal must be at most 2000 characters",
         )
-    for field in ("name", "goal", "start_date", "end_date"):
-        if field in changes:
-            setattr(sprint, field, changes[field])
+    sprint.goal = goal
     session.add(sprint)
-    try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, _SPRINT_UPDATE_CONFLICT) from None
+    session.commit()
     session.refresh(sprint)
     return sprint
 
 
 def start_sprint(session: Session, sprint: Sprint) -> Sprint:
-    if sprint.status is not SprintStatus.PLANNING:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Sprint must be planning")
-    if session.exec(
-        select(Sprint).where(
-            Sprint.project_id == sprint.project_id,
-            Sprint.status == SprintStatus.ACTIVE,
-        )
-    ).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, _ACTIVE_SPRINT_EXISTS)
-    sprint.committed_points = sum(
-        points or 0
-        for points in session.exec(select(Ticket.story_points).where(Ticket.sprint_id == sprint.id))
-    )
-    sprint.status = SprintStatus.ACTIVE
-    session.add(sprint)
     try:
+        _claim_project(session, sprint.project_id)
+        sprint = session.get(Sprint, sprint.id, populate_existing=True)
+        if sprint is None or sprint.status is not SprintStatus.PLANNING:
+            raise HTTPException(status.HTTP_409_CONFLICT, "Sprint must be planning")
+        if not sprint.goal.strip():
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Sprint goal is required")
+        earliest = session.exec(
+            select(Sprint)
+            .where(Sprint.project_id == sprint.project_id, Sprint.status == SprintStatus.PLANNING)
+            .order_by(*sprint_chronology())
+        ).first()
+        if earliest is None or earliest.id != sprint.id:
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "Only the earliest planning sprint may start"
+            )
+        if session.exec(
+            select(Sprint).where(
+                Sprint.project_id == sprint.project_id, Sprint.status == SprintStatus.ACTIVE
+            )
+        ).first():
+            raise HTTPException(status.HTTP_409_CONFLICT, _ACTIVE_SPRINT_EXISTS)
+        sprint.committed_points = sum(
+            points or 0
+            for points in session.exec(
+                select(Ticket.story_points).where(Ticket.sprint_id == sprint.id)
+            )
+        )
+        sprint.status = SprintStatus.ACTIVE
+        session.add(sprint)
         session.commit()
-    except IntegrityError:
+    except HTTPException:
+        session.rollback()
+        raise
+    except (IntegrityError, OperationalError):
         session.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, _ACTIVE_SPRINT_EXISTS) from None
     session.refresh(sprint)
@@ -527,22 +586,38 @@ def start_sprint(session: Session, sprint: Sprint) -> Sprint:
 def close_sprint(
     session: Session,
     sprint: Sprint,
-    next_sprint: Sprint,
     *,
     goal_achieved: bool | None = None,
     review_notes: str | None = None,
 ) -> Sprint:
     try:
+        _claim_project(session, sprint.project_id)
         sprint = session.get(Sprint, sprint.id, populate_existing=True)
-        next_sprint = session.get(Sprint, next_sprint.id, populate_existing=True)
         if sprint is None or sprint.status is not SprintStatus.ACTIVE:
             raise HTTPException(status.HTTP_409_CONFLICT, "Sprint must be active")
-        if next_sprint is None or next_sprint.project_id != sprint.project_id:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT, "Next sprint must belong to the same project"
+        project = session.get(Project, sprint.project_id)
+        next_sprint = session.exec(
+            select(Sprint)
+            .where(
+                Sprint.project_id == sprint.project_id,
+                Sprint.status == SprintStatus.PLANNING,
             )
-        if next_sprint.status is not SprintStatus.PLANNING:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Next sprint must be planning")
+            .order_by(*sprint_chronology())
+        ).first()
+        if next_sprint is None:
+            existing = session.exec(
+                select(Sprint)
+                .where(Sprint.project_id == sprint.project_id)
+                .order_by(*sprint_chronology())
+            ).all()
+            next_start = (
+                existing[-1].start_date + timedelta(days=14)
+                if existing
+                else first_sprint_date(project.start_date)
+            )
+            next_sprint = _build_sprint(project, len(existing) + 1, next_start)
+            session.add(next_sprint)
+            session.flush()
 
         if review_notes is not None and len(review_notes) > 4000:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "review_notes is too long")
@@ -588,6 +663,7 @@ def close_sprint(
         sprint.review_notes = review_notes.strip() if review_notes else None
         session.commit()
     except HTTPException:
+        session.rollback()
         raise
     except IntegrityError:
         session.rollback()

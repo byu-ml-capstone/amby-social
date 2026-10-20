@@ -27,9 +27,7 @@ def upgrade() -> None:
             sqlmodel.sql.sqltypes.AutoString(length=255),
             nullable=False,
         ),
-        sa.Column(
-            "connected_by_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False
-        ),
+        sa.Column("connected_by_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(["connected_by_id"], ["user.id"]),
@@ -38,9 +36,7 @@ def upgrade() -> None:
     )
     op.create_table(
         "github_connect_state",
-        sa.Column(
-            "id", sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False
-        ),
+        sa.Column("id", sqlmodel.sql.sqltypes.AutoString(length=64), nullable=False),
         sa.Column("project_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("user_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("pending_installation_id", sa.Integer(), nullable=True),
@@ -66,9 +62,7 @@ def upgrade() -> None:
     op.create_table(
         "project_github_connection",
         sa.Column("project_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column(
-            "installation_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False
-        ),
+        sa.Column("installation_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
         sa.ForeignKeyConstraint(["installation_id"], ["github_installation.id"]),
@@ -90,9 +84,7 @@ def upgrade() -> None:
         "project_github_repository",
         sa.Column("id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("project_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
-        sa.Column(
-            "installation_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False
-        ),
+        sa.Column("installation_id", sqlmodel.sql.sqltypes.AutoString(), nullable=False),
         sa.Column("github_repository_id", sa.Integer(), nullable=False),
         sa.Column(
             "full_name",
@@ -168,9 +160,7 @@ def upgrade() -> None:
         ),
         sa.Column("received_at", sa.DateTime(), nullable=False),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "provider", "delivery_id", name="uq_integration_delivery_provider"
-        ),
+        sa.UniqueConstraint("provider", "delivery_id", name="uq_integration_delivery_provider"),
     )
     op.create_table(
         "github_artifact",
@@ -191,9 +181,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.Column("number", sa.Integer(), nullable=True),
-        sa.Column(
-            "title", sqlmodel.sql.sqltypes.AutoString(length=500), nullable=False
-        ),
+        sa.Column("title", sqlmodel.sql.sqltypes.AutoString(length=500), nullable=False),
         sa.Column(
             "html_url",
             sqlmodel.sql.sqltypes.AutoString(length=500),
@@ -237,9 +225,7 @@ def upgrade() -> None:
         ),
         sa.Column("occurred_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["repository_connection_id"], ["project_github_repository.id"]
-        ),
+        sa.ForeignKeyConstraint(["repository_connection_id"], ["project_github_repository.id"]),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint(
             "repository_connection_id",
