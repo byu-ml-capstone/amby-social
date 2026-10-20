@@ -35,6 +35,8 @@ from app.models import (
     Role,
     Sprint,
     SprintStatus,
+    Subtask,
+    SubtaskStatus,
     Ticket,
     TicketAttachment,
     TicketComment,
@@ -50,7 +52,9 @@ from app.services import (
     create_ticket,
     delete_ticket_record,
     set_status,
+    update_subtask,
     update_ticket,
+    create_subtask,
 )
 
 router = APIRouter(tags=["web"])
@@ -71,6 +75,24 @@ def _project_ticket(session: Session, project: Project, ticket_number: int) -> T
     if ticket is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
     return ticket
+
+
+def _subtask_context(session: Session, ticket: Ticket) -> dict:
+    subtasks = session.exec(
+        select(Subtask)
+        .where(Subtask.ticket_id == ticket.id)
+        .order_by(Subtask.position, Subtask.created_at)
+    ).all()
+    completed = sum(
+        getattr(subtask.status, "value", subtask.status) == SubtaskStatus.DONE.value
+        for subtask in subtasks
+    )
+    return {
+        "subtasks": subtasks,
+        "subtask_statuses": SubtaskStatus,
+        "subtask_completed": completed,
+        "subtask_percent": round(completed * 100 / len(subtasks)) if subtasks else 0,
+    }
 
 
 def _comment_members(session: Session, project: Project, mention_ids: list[str]) -> list[User]:
@@ -253,6 +275,7 @@ def _ticket_detail(
     reference = ticket_reference(project, ticket)
     command = branch_command(project, ticket)
     development = ticket_development(session, ticket)
+    subtask_context = _subtask_context(session, ticket)
     sprints = session.exec(
         select(Sprint)
         .where(
@@ -286,6 +309,7 @@ def _ticket_detail(
             "ticket_reference": reference,
             "branch_command": command,
             "development_rows": development,
+            **subtask_context,
             "members": members,
             "comments": comments,
             "comment_error": comment_error,
@@ -580,8 +604,8 @@ def update_ticket_form(
     ticket_number: int,
     request: Request,
     tasks: BackgroundTasks,
-    title: str = Form(""),
-    description: str = Form(""),
+    title: str = Form("", alias="subtask_title"),
+    description: str = Form("", alias="subtask_description"),
     type: str = Form(""),
     priority: str = Form(""),
     story_points: str = Form(""),
@@ -735,7 +759,7 @@ def create_ticket_form(
     # this form bypasses any Pydantic schema), and the TICKET_CREATED notification all live
     # there exactly once.
     try:
-        create_ticket(
+        ticket = create_ticket(
             session,
             project,
             user,
@@ -756,6 +780,123 @@ def create_ticket_form(
         response.headers["HX-Redirect"] = f"/projects/{project.slug}"
         return response
     return RedirectResponse(f"/projects/{project.slug}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post(
+    "/projects/{slug}/tickets/{ticket_number}/subtasks",
+    dependencies=[Depends(verify_csrf)],
+)
+def create_subtask_form(
+    slug: str,
+    ticket_number: int,
+    request: Request,
+    title: str = Form("", alias="subtask_title"),
+    description: str = Form("", alias="subtask_description"),
+    project_and_member: tuple[Project, ProjectMember] = Depends(project_writer),
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    project, _ = project_and_member
+    ticket = _project_ticket(session, project, ticket_number)
+    try:
+        create_subtask(session, ticket, title=title, description=description)
+    except HTTPException as exc:
+        return _ticket_detail(
+            request,
+            session,
+            user,
+            project,
+            ticket,
+            error=exc.detail,
+            status_code=exc.status_code,
+        )
+    return render(
+        request,
+        "partials/ticket_subtasks.html",
+        {
+            "user": user,
+            "ticket": ticket,
+            "project": project,
+            **_subtask_context(session, ticket),
+            "subtask_error": None,
+        },
+    )
+
+
+@router.patch(
+    "/projects/{slug}/tickets/{ticket_number}/subtasks/{subtask_id}",
+    dependencies=[Depends(verify_csrf)],
+)
+def update_subtask_status(
+    slug: str,
+    ticket_number: int,
+    subtask_id: str,
+    request: Request,
+    title: str | None = Form(None, alias="subtask_title"),
+    description: str | None = Form(None, alias="subtask_description"),
+    status_value: SubtaskStatus | None = Form(None, alias="subtask_status"),
+    project_and_member: tuple[Project, ProjectMember] = Depends(project_writer),
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    project, _ = project_and_member
+    ticket = _project_ticket(session, project, ticket_number)
+    subtask = session.get(Subtask, subtask_id)
+    if subtask is None or subtask.ticket_id != ticket.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subtask not found")
+    if title is None and description is None and status_value is None:
+        status_value = SubtaskStatus.TODO
+    update_subtask(
+        session,
+        subtask,
+        title=title,
+        description=description,
+        status_value=status_value,
+    )
+    return render(
+        request,
+        "partials/ticket_subtasks.html",
+        {
+            "user": user,
+            "ticket": ticket,
+            "project": project,
+            **_subtask_context(session, ticket),
+            "subtask_error": None,
+        },
+    )
+
+
+@router.delete(
+    "/projects/{slug}/tickets/{ticket_number}/subtasks/{subtask_id}",
+    dependencies=[Depends(verify_csrf)],
+)
+def delete_subtask_form(
+    slug: str,
+    ticket_number: int,
+    subtask_id: str,
+    request: Request,
+    project_and_member: tuple[Project, ProjectMember] = Depends(project_writer),
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    project, _ = project_and_member
+    ticket = _project_ticket(session, project, ticket_number)
+    subtask = session.get(Subtask, subtask_id)
+    if subtask is None or subtask.ticket_id != ticket.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subtask not found")
+    session.delete(subtask)
+    session.commit()
+    return render(
+        request,
+        "partials/ticket_subtasks.html",
+        {
+            "user": user,
+            "ticket": ticket,
+            "project": project,
+            **_subtask_context(session, ticket),
+            "subtask_error": None,
+        },
+    )
 
 
 @router.post("/projects/{slug}/tickets/{ticket_number}/status", dependencies=[Depends(verify_csrf)])

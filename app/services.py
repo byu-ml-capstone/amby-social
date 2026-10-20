@@ -30,6 +30,8 @@ from app.models import (
     SprintReport,
     SprintStatus,
     SprintTicketHistory,
+    Subtask,
+    SubtaskStatus,
     Ticket,
     TicketAttachment,
     TicketComment,
@@ -46,6 +48,7 @@ META_MAX_BYTES = 8 * 1024
 META_MAX_DEPTH = 3
 TITLE_MAX_LENGTH = 255
 DESCRIPTION_MAX_LENGTH = 20_000
+SUBTASK_DESCRIPTION_MAX_LENGTH = 5_000
 VALID_STORY_POINTS = {1, 2, 3, 5, 8, 13}
 NULLABLE_TICKET_FIELDS = {
     "story_points",
@@ -739,6 +742,88 @@ def create_ticket(
     session.refresh(ticket)
     schedule(tasks, session, project, EVENT_TICKET_CREATED, ticket)
     return ticket
+
+
+def create_subtask(
+    session: Session,
+    ticket: Ticket,
+    *,
+    title: str,
+    description: str = "",
+    status_value: SubtaskStatus = SubtaskStatus.TODO,
+    position: int | None = None,
+    commit: bool = True,
+) -> Subtask:
+    clean_title = title.strip()
+    if not clean_title:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "subtask title must not be empty"
+        )
+    if len(clean_title) > TITLE_MAX_LENGTH:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"subtask title must be at most {TITLE_MAX_LENGTH} characters",
+        )
+    if len(description) > SUBTASK_DESCRIPTION_MAX_LENGTH:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"subtask description must be at most {SUBTASK_DESCRIPTION_MAX_LENGTH} characters",
+        )
+    if position is None:
+        position = session.exec(
+            select(Subtask.position)
+            .where(Subtask.ticket_id == ticket.id)
+            .order_by(Subtask.position.desc())
+        ).first()
+        position = (position or -1) + 1
+    subtask = Subtask(
+        ticket_id=ticket.id,
+        title=clean_title,
+        description=description,
+        status=status_value,
+        position=position,
+    )
+    session.add(subtask)
+    if commit:
+        session.commit()
+        session.refresh(subtask)
+    return subtask
+
+
+def update_subtask(
+    session: Session,
+    subtask: Subtask,
+    *,
+    title: str | None = None,
+    description: str | None = None,
+    status_value: SubtaskStatus | None = None,
+) -> Subtask:
+    if title is not None:
+        clean_title = title.strip()
+        if not clean_title:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "subtask title must not be empty"
+            )
+        if len(clean_title) > TITLE_MAX_LENGTH:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"subtask title must be at most {TITLE_MAX_LENGTH} characters",
+            )
+        subtask.title = clean_title
+    if description is not None:
+        if len(description) > SUBTASK_DESCRIPTION_MAX_LENGTH:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                f"subtask description must be at most {SUBTASK_DESCRIPTION_MAX_LENGTH} characters",
+            )
+        subtask.description = description
+    if status_value is not None:
+        subtask.status = status_value
+    subtask.updated_at = utcnow()
+    session.add(subtask)
+    session.commit()
+    session.refresh(subtask)
+    return subtask
 
 
 def update_ticket(

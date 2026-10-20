@@ -77,6 +77,12 @@ class TicketStatus(StrEnum):
     DONE = "DONE"
 
 
+class SubtaskStatus(StrEnum):
+    TODO = "TODO"
+    IN_PROGRESS = "IN_PROGRESS"
+    DONE = "DONE"
+
+
 class SprintStatus(StrEnum):
     PLANNING = "PLANNING"
     ACTIVE = "ACTIVE"
@@ -194,6 +200,22 @@ class Ticket(SQLModel, table=True):
     completed_at: datetime | None = Field(default=None)
     meta: dict = Field(default_factory=dict, sa_column=Column(JSON, nullable=False))
     created_at: datetime = Field(default_factory=utcnow)
+
+
+class Subtask(SQLModel, table=True):
+    __tablename__ = "subtask"
+    __table_args__ = (
+        CheckConstraint("length(trim(title)) > 0", name="ck_subtask_title_not_blank"),
+    )
+
+    id: str = Field(default_factory=new_id, primary_key=True)
+    ticket_id: str = Field(foreign_key="ticket.id", index=True)
+    title: str = Field(max_length=255)
+    description: str = Field(default="", max_length=5000)
+    status: SubtaskStatus = Field(default=SubtaskStatus.TODO, index=True)
+    position: int = Field(default=0, index=True)
+    created_at: datetime = Field(default_factory=utcnow)
+    updated_at: datetime | None = None
 
 
 class TicketComment(SQLModel, table=True):

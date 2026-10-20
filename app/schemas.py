@@ -15,6 +15,7 @@ from app.models import (
     ReportGenerationStatus,
     Role,
     SprintStatus,
+    SubtaskStatus,
     TicketStatus,
     TicketType,
 )
@@ -129,6 +130,18 @@ class MemberOut(BaseModel):
     joined_at: datetime
 
 
+class SubtaskCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    description: str = Field(default="", max_length=5000)
+    status: SubtaskStatus = SubtaskStatus.TODO
+
+
+class SubtaskUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=5000)
+    status: SubtaskStatus | None = None
+
+
 class TicketCreate(BaseModel):
     slug: str
     title: str = Field(min_length=1, max_length=TITLE_MAX_LENGTH)
@@ -140,6 +153,20 @@ class TicketCreate(BaseModel):
     sprint_id: str | None = None
     assignee_id: str | None = None
     meta: dict = Field(default_factory=dict)
+    subtasks: list[SubtaskCreate] = Field(default_factory=list, max_length=50)
+
+
+class SubtaskOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    ticket_id: str
+    title: str
+    description: str
+    status: SubtaskStatus
+    position: int
+    created_at: datetime
+    updated_at: datetime | None
 
 
 class TicketOut(BaseModel):
@@ -193,6 +220,7 @@ class DevelopmentOut(BaseModel):
 
 
 class TicketDetailOut(TicketOut):
+    subtasks: list[SubtaskOut] = []
     attachments: list[AttachmentOut] = []
     branch_command: str | None = None
     development: list[DevelopmentOut] = []

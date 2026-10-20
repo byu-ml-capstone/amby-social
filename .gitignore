@@ -8,6 +8,10 @@ venv/
 .env.*
 !.env.example
 !.env.mcp.example
+*.pem
+*.key
+*credentials*.json
+*service-account*.json
 *.db
 *.db-wal
 *.db-shm
