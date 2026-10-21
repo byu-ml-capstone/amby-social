@@ -1,7 +1,7 @@
 """add subtasks
 
 Revision ID: 1f4b6c8d9a20
-Revises: e5c1a7d3b902
+Revises: f6a2b4c8d901
 Create Date: 2026-10-20
 """
 
@@ -13,7 +13,7 @@ import sqlmodel
 from alembic import op
 
 revision: str = "1f4b6c8d9a20"
-down_revision: str | Sequence[str] | None = "e5c1a7d3b902"
+down_revision: str | Sequence[str] | None = "f6a2b4c8d901"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
