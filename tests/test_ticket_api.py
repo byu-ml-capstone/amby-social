@@ -6,7 +6,7 @@ import pytest
 from app.models import Sprint, SprintStatus, SprintTicketHistory, Ticket
 
 # What GET /tickets/{id} adds on top of a list item.
-NEW_DETAIL = {"attachments": [], "development": [], "branch_command": ANY}
+NEW_DETAIL = {"subtasks": [], "attachments": [], "development": [], "branch_command": ANY}
 
 
 @pytest.fixture

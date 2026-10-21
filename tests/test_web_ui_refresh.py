@@ -204,7 +204,9 @@ def test_project_board_shares_chrome_without_leaking_board_effects(client):
     assert "padding: var(--space-6);" in project_board
     assert ".project-board { padding: var(--space-4); }" in mobile_css
     assert "radial-gradient" not in css
-    assert "rotate(" not in css
+    # Subtask disclosure arrows and the companion animation intentionally rotate;
+    # the board chrome itself should not introduce decorative rotation.
+    assert "rotate(" not in project_board
     assert ".ticket-card:nth-child" not in css
 
 

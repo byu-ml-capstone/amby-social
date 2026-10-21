@@ -10,6 +10,7 @@ from app.models import (
     Project,
     ProjectMember,
     Role,
+    Subtask,
     Ticket,
     TicketAttachment,
     TicketStatus,
@@ -20,13 +21,23 @@ from app.schemas import (
     AttachmentOut,
     DevelopmentOut,
     StatusUpdate,
+    SubtaskCreate,
+    SubtaskOut,
+    SubtaskUpdate,
     TicketCreate,
     TicketDetailOut,
     TicketOut,
     TicketPage,
     TicketUpdate,
 )
-from app.services import create_ticket, delete_ticket_record, set_status, update_ticket
+from app.services import (
+    create_subtask,
+    create_ticket,
+    delete_ticket_record,
+    set_status,
+    update_subtask,
+    update_ticket,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["tickets"])
 
@@ -86,7 +97,7 @@ def post_ticket(
     session: Session = Depends(get_session),
 ) -> Ticket:
     project = _project_for_write(body.slug, user, session)
-    return create_ticket(
+    ticket = create_ticket(
         session,
         project,
         user,
@@ -101,6 +112,16 @@ def post_ticket(
         meta=body.meta,
         tasks=tasks,
     )
+    for position, subtask in enumerate(body.subtasks):
+        create_subtask(
+            session,
+            ticket,
+            title=subtask.title,
+            description=subtask.description,
+            status_value=subtask.status,
+            position=position,
+        )
+    return ticket
 
 
 @router.get("/projects/{slug}/tickets", response_model=TicketPage)
@@ -148,8 +169,14 @@ def get_ticket(
         .where(TicketAttachment.ticket_id == ticket.id)
         .order_by(TicketAttachment.created_at)
     ).all()
+    subtasks = session.exec(
+        select(Subtask)
+        .where(Subtask.ticket_id == ticket.id)
+        .order_by(Subtask.position, Subtask.created_at)
+    ).all()
     return TicketDetailOut.model_validate(ticket).model_copy(
         update={
+            "subtasks": [SubtaskOut.model_validate(row) for row in subtasks],
             "attachments": [AttachmentOut.model_validate(row) for row in rows],
             "branch_command": branch_command(project, ticket),
             "development": [
@@ -157,6 +184,57 @@ def get_ticket(
             ],
         }
     )
+
+
+@router.post(
+    "/tickets/{ticket_id}/subtasks",
+    response_model=SubtaskOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def post_subtask(
+    ticket_id: str,
+    body: SubtaskCreate,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> Subtask:
+    ticket, _, _ = load_ticket_for_write(ticket_id, user, session)
+    return create_subtask(
+        session, ticket, title=body.title, description=body.description, status_value=body.status
+    )
+
+
+@router.patch("/subtasks/{subtask_id}", response_model=SubtaskOut)
+def patch_subtask(
+    subtask_id: str,
+    body: SubtaskUpdate,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> Subtask:
+    subtask = session.get(Subtask, subtask_id)
+    if subtask is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subtask not found")
+    ticket, _, _ = load_ticket_for_write(subtask.ticket_id, user, session)
+    return update_subtask(
+        session,
+        subtask,
+        title=body.title,
+        description=body.description,
+        status_value=body.status,
+    )
+
+
+@router.delete("/subtasks/{subtask_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_subtask(
+    subtask_id: str,
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> None:
+    subtask = session.get(Subtask, subtask_id)
+    if subtask is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subtask not found")
+    load_ticket_for_write(subtask.ticket_id, user, session)
+    session.delete(subtask)
+    session.commit()
 
 
 @router.get("/attachments/{attachment_id}")

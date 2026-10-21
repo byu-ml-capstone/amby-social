@@ -1,3 +1,121 @@
+  let nekoLoader;
+
+  function loadNeko() {
+    if (window.createNeko) return Promise.resolve(window.createNeko);
+    if (!nekoLoader) {
+      nekoLoader = new Promise((resolve, reject) => {
+        const existing = document.querySelector("script[data-kanbanflow-neko]");
+        if (existing) {
+          existing.addEventListener("load", () => resolve(window.createNeko), { once: true });
+          existing.addEventListener("error", reject, { once: true });
+          return;
+        }
+        const script = document.createElement("script");
+        script.src = "https://louisabraham.github.io/nekojs/neko.js";
+        script.dataset.kanbanflowNeko = "true";
+        script.onload = () => resolve(window.createNeko);
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    return nekoLoader;
+  }
+
+  function setupNeko() {
+    const toggle = document.getElementById("neko-toggle");
+    if (!toggle) return;
+    let enabled = window.localStorage.getItem("kanbanflow_cat") !== "off";
+    let neko;
+    let nekoFactory;
+    let reactionTimer;
+    let cancelled = false;
+
+    const update = () => {
+      toggle.textContent = enabled ? "Neko on" : "Neko off";
+      toggle.setAttribute("aria-pressed", String(enabled));
+    };
+    const start = (behaviorMode = 0) => loadNeko().then((createNeko) => {
+      if (cancelled || !createNeko) return;
+      nekoFactory = createNeko;
+      neko = createNeko({ speed: 18, fps: 90, behaviorMode, allowBehaviorChange: true });
+      neko.start();
+    }).catch(() => {});
+    const stop = () => {
+      clearTimeout(reactionTimer);
+      neko?.destroy();
+      neko = undefined;
+    };
+    const react = (message, _behaviorMode, duration) => {
+      toggle.textContent = message;
+      toggle.classList.add("is-reacting");
+      clearTimeout(reactionTimer);
+      const nekoElement = neko?.element || document.querySelector(".neko");
+      nekoElement?.classList.add("neko-celebrating");
+      reactionTimer = setTimeout(() => {
+        nekoElement?.classList.remove("neko-celebrating");
+        toggle.classList.remove("is-reacting");
+        update();
+      }, duration);
+    };
+    window.kanbanNekoReact = react;
+
+    update();
+    if (enabled) start();
+    toggle.addEventListener("click", () => {
+      enabled = !enabled;
+      window.localStorage.setItem("kanbanflow_cat", enabled ? "on" : "off");
+      toggle.classList.remove("is-reacting");
+      update();
+      if (enabled) start(); else stop();
+    });
+    window.addEventListener("pagehide", () => { cancelled = true; stop(); delete window.kanbanNekoReact; }, { once: true });
+  }
+
+  function keepNekoAboveOpenDialog() {
+    const neko = document.querySelector(".neko");
+    if (!neko) return;
+    const openDialog = document.querySelector("dialog[open]");
+    if (openDialog && neko.parentElement !== openDialog) {
+      openDialog.appendChild(neko);
+    } else if (!openDialog && neko.parentElement !== document.body) {
+      document.body.appendChild(neko);
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", () => {
+    setupNeko();
+    const dialogObserver = new MutationObserver(keepNekoAboveOpenDialog);
+    dialogObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["open"],
+      childList: true,
+      subtree: true,
+    });
+    keepNekoAboveOpenDialog();
+  });
+  document.addEventListener("close", keepNekoAboveOpenDialog, true);
+
+  let lastSubtaskCompleted;
+  function checkSubtaskProgress() {
+    const section = document.querySelector("#ticket-subtasks");
+    if (!section) return;
+    const completed = Number(section.dataset.subtaskCompleted || 0);
+    const total = Number(section.dataset.subtaskTotal || 0);
+    if (lastSubtaskCompleted !== undefined && completed > lastSubtaskCompleted) {
+      const finished = total > 0 && completed === total;
+      window.kanbanNekoReact?.(
+        finished ? "Neko celebrates!" : "Neko says: nice!",
+        2,
+        finished ? 2800 : 1600,
+      );
+    }
+    lastSubtaskCompleted = completed;
+  }
+  document.addEventListener("DOMContentLoaded", checkSubtaskProgress);
+  document.addEventListener("htmx:afterSwap", (event) => {
+    if (event.target?.id === "ticket-subtasks") checkSubtaskProgress();
+  });
+
 (() => {
   const inputSelector = "[data-mention-input]";
 
