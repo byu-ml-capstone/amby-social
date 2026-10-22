@@ -373,6 +373,34 @@ def test_ticket_save_refreshes_a_filtered_board(client, ticket_world, login_as):
     assert "HX-Trigger" not in response.headers
 
 
+def test_ticket_save_keeps_feedback_when_filtered_membership_is_unchanged(
+    client, ticket_world, login_as
+):
+    login_as(ticket_world.owner.email)
+
+    response = client.post(
+        f"/projects/{ticket_world.project.slug}/tickets/1",
+        data={
+            "title": "Retitled request",
+            "description": "Text",
+            "type": "BUG",
+            "priority": "HIGH",
+            "assignee_id": ticket_world.owner.id,
+            "status": "SELECTED",
+            "sprint_id": ticket_world.active_id,
+            "_csrf": make_csrf_token(ticket_world.owner.id),
+        },
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": f"http://testserver/projects/{ticket_world.project.slug}?mine=1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "HX-Refresh" not in response.headers
+    assert f"refresh-my-request-{ticket_world.ticket_id}" in response.headers["HX-Trigger"]
+
+
 def test_ticket_drawer_resolves_the_current_card_button_after_a_refresh():
     board = Path("app/templates/board.html").read_text()
     card = Path("app/templates/partials/ticket_card.html").read_text()
