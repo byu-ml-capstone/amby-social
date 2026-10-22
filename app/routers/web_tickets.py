@@ -717,11 +717,21 @@ def update_ticket_form(
     current_url = urlparse(request.headers.get("HX-Current-URL", ""))
     current_filters = parse_qs(current_url.query)
     location_changed = "status" in changed_fields or "sprint_id" in changed_fields
-    filter_active = bool({"mine", "assignee_id", "type", "priority"} & current_filters.keys())
+    filter_fields = {
+        "mine": "assignee_id",
+        "assignee_id": "assignee_id",
+        "type": "type",
+        "priority": "priority",
+    }
+    filter_changed = any(
+        field in changed_fields
+        for name, field in filter_fields.items()
+        if name in current_filters
+    )
     page_refresh_needed = (
         location_changed
         or current_url.path.endswith("/backlog")
-        or filter_active
+        or filter_changed
     )
     if page_refresh_needed:
         response.headers["HX-Refresh"] = "true"
