@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -120,7 +121,7 @@ def test_detail_fragment_renders_sanitized_markdown_and_project_members(
     assert 'class="project-board sketch-board"' not in standalone.text
 
 
-def test_owner_updates_every_ticket_detail_field_and_requests_card_refresh(
+def test_owner_updates_every_ticket_detail_field_and_requests_board_refresh(
     client, ticket_world, login_as, session
 ):
     login_as(ticket_world.owner.email)
@@ -296,8 +297,8 @@ def test_compact_card_opens_the_detail_panel_and_refreshes_itself(client, ticket
     assert f"refresh-ticket-card-{ticket_world.ticket_id}" in card.text
 
 
-def test_ticket_save_returns_a_textual_status(client, ticket_world, login_as):
-    login_as(ticket_world.owner.email)
+def test_ticket_save_refreshes_its_board_card_without_reloading(client, ticket_world, login_as):
+    login_as(ticket_world.member.email)
 
     response = client.post(
         f"/projects/{ticket_world.project.slug}/tickets/1",
@@ -307,7 +308,8 @@ def test_ticket_save_returns_a_textual_status(client, ticket_world, login_as):
             "type": "BUG",
             "priority": "HIGH",
             "status": "SELECTED",
-            "_csrf": make_csrf_token(ticket_world.owner.id),
+            "sprint_id": ticket_world.active_id,
+            "_csrf": make_csrf_token(ticket_world.member.id),
         },
         headers={"HX-Request": "true"},
     )
@@ -316,8 +318,87 @@ def test_ticket_save_returns_a_textual_status(client, ticket_world, login_as):
     assert '<p class="form-status" role="status">Ticket saved.</p>' in response.text
     assert "Updated:" in response.text
     assert "status" in response.text
+    assert response.headers["HX-Trigger"] == f"refresh-ticket-card-{ticket_world.ticket_id}"
+    assert "HX-Refresh" not in response.headers
+
+
+def test_ticket_save_notifies_the_creator_requests(client, ticket_world, login_as):
+    login_as(ticket_world.owner.email)
+
+    response = client.post(
+        f"/projects/{ticket_world.project.slug}/tickets/1",
+        data={
+            "title": "Updated request",
+            "description": "Text",
+            "type": "BUG",
+            "priority": "HIGH",
+            "status": "SELECTED",
+            "sprint_id": ticket_world.active_id,
+            "_csrf": make_csrf_token(ticket_world.owner.id),
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.status_code == 200
+    events = json.loads(response.headers["HX-Trigger"])
+    assert events[f"refresh-ticket-card-{ticket_world.ticket_id}"] == {}
+    assert events[f"refresh-my-request-{ticket_world.ticket_id}"] == {"title": "Updated request"}
+    page = client.get(f"/projects/{ticket_world.project.slug}")
+    assert f"@refresh-my-request-{ticket_world.ticket_id}.window" in page.text
+
+
+def test_ticket_save_refreshes_a_filtered_board(client, ticket_world, login_as):
+    login_as(ticket_world.member.email)
+
+    response = client.post(
+        f"/projects/{ticket_world.project.slug}/tickets/1",
+        data={
+            "title": "Assigned to me",
+            "description": "Text",
+            "type": "BUG",
+            "priority": "HIGH",
+            "assignee_id": ticket_world.member.id,
+            "status": "SELECTED",
+            "sprint_id": ticket_world.active_id,
+            "_csrf": make_csrf_token(ticket_world.member.id),
+        },
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": f"http://testserver/projects/{ticket_world.project.slug}?mine=1",
+        },
+    )
+
+    assert response.status_code == 200
     assert response.headers["HX-Refresh"] == "true"
     assert "HX-Trigger" not in response.headers
+
+
+def test_ticket_save_keeps_feedback_when_filtered_membership_is_unchanged(
+    client, ticket_world, login_as
+):
+    login_as(ticket_world.owner.email)
+
+    response = client.post(
+        f"/projects/{ticket_world.project.slug}/tickets/1",
+        data={
+            "title": "Retitled request",
+            "description": "Text",
+            "type": "BUG",
+            "priority": "HIGH",
+            "assignee_id": ticket_world.owner.id,
+            "status": "SELECTED",
+            "sprint_id": ticket_world.active_id,
+            "_csrf": make_csrf_token(ticket_world.owner.id),
+        },
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": f"http://testserver/projects/{ticket_world.project.slug}?mine=1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "HX-Refresh" not in response.headers
+    assert f"refresh-my-request-{ticket_world.ticket_id}" in response.headers["HX-Trigger"]
 
 
 def test_ticket_drawer_resolves_the_current_card_button_after_a_refresh():
