@@ -1,3 +1,4 @@
+import json
 from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
@@ -297,12 +298,37 @@ def test_compact_card_opens_the_detail_panel_and_refreshes_itself(client, ticket
 
 
 def test_ticket_save_refreshes_its_board_card_without_reloading(client, ticket_world, login_as):
-    login_as(ticket_world.owner.email)
+    login_as(ticket_world.member.email)
 
     response = client.post(
         f"/projects/{ticket_world.project.slug}/tickets/1",
         data={
             "title": "Unsafe details",
+            "description": "Text",
+            "type": "BUG",
+            "priority": "HIGH",
+            "status": "SELECTED",
+            "sprint_id": ticket_world.active_id,
+            "_csrf": make_csrf_token(ticket_world.member.id),
+        },
+        headers={"HX-Request": "true"},
+    )
+
+    assert response.status_code == 200
+    assert '<p class="form-status" role="status">Ticket saved.</p>' in response.text
+    assert "Updated:" in response.text
+    assert "status" in response.text
+    assert response.headers["HX-Trigger"] == f"refresh-ticket-card-{ticket_world.ticket_id}"
+    assert "HX-Refresh" not in response.headers
+
+
+def test_ticket_save_notifies_the_creator_requests(client, ticket_world, login_as):
+    login_as(ticket_world.owner.email)
+
+    response = client.post(
+        f"/projects/{ticket_world.project.slug}/tickets/1",
+        data={
+            "title": "Updated request",
             "description": "Text",
             "type": "BUG",
             "priority": "HIGH",
@@ -314,11 +340,37 @@ def test_ticket_save_refreshes_its_board_card_without_reloading(client, ticket_w
     )
 
     assert response.status_code == 200
-    assert '<p class="form-status" role="status">Ticket saved.</p>' in response.text
-    assert "Updated:" in response.text
-    assert "status" in response.text
-    assert response.headers["HX-Trigger"] == f"refresh-ticket-card-{ticket_world.ticket_id}"
-    assert "HX-Refresh" not in response.headers
+    events = json.loads(response.headers["HX-Trigger"])
+    assert events[f"refresh-ticket-card-{ticket_world.ticket_id}"] == {}
+    assert events[f"refresh-my-request-{ticket_world.ticket_id}"] == {"title": "Updated request"}
+    page = client.get(f"/projects/{ticket_world.project.slug}")
+    assert f"@refresh-my-request-{ticket_world.ticket_id}.window" in page.text
+
+
+def test_ticket_save_refreshes_a_filtered_board(client, ticket_world, login_as):
+    login_as(ticket_world.member.email)
+
+    response = client.post(
+        f"/projects/{ticket_world.project.slug}/tickets/1",
+        data={
+            "title": "Assigned to me",
+            "description": "Text",
+            "type": "BUG",
+            "priority": "HIGH",
+            "assignee_id": ticket_world.member.id,
+            "status": "SELECTED",
+            "sprint_id": ticket_world.active_id,
+            "_csrf": make_csrf_token(ticket_world.member.id),
+        },
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": f"http://testserver/projects/{ticket_world.project.slug}?mine=1",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["HX-Refresh"] == "true"
+    assert "HX-Trigger" not in response.headers
 
 
 def test_ticket_drawer_resolves_the_current_card_button_after_a_refresh():
