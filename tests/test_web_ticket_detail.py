@@ -121,7 +121,7 @@ def test_detail_fragment_renders_sanitized_markdown_and_project_members(
     assert 'class="project-board sketch-board"' not in standalone.text
 
 
-def test_owner_updates_every_ticket_detail_field_and_requests_card_refresh(
+def test_owner_updates_every_ticket_detail_field_and_requests_board_refresh(
     client, ticket_world, login_as, session
 ):
     login_as(ticket_world.owner.email)
@@ -145,8 +145,8 @@ def test_owner_updates_every_ticket_detail_field_and_requests_card_refresh(
 
     assert response.status_code == 200, response.text
     assert "Updated title" in response.text
-    assert response.headers["HX-Trigger"] == f"refresh-ticket-card-{ticket_world.ticket_id}"
-    assert "HX-Refresh" not in response.headers
+    assert response.headers["HX-Refresh"] == "true"
+    assert "HX-Trigger" not in response.headers
     ticket = _ticket(session, ticket_world)
     assert (
         ticket.title,
@@ -346,6 +346,7 @@ def test_ticket_save_refreshes_its_board_card_without_reloading(client, ticket_w
             "type": "BUG",
             "priority": "HIGH",
             "status": "SELECTED",
+            "sprint_id": ticket_world.active_id,
             "_csrf": make_csrf_token(ticket_world.owner.id),
         },
         headers={"HX-Request": "true"},

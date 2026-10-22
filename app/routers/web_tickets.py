@@ -1,6 +1,7 @@
 """Ticket pages: detail, edit, status, comments and attachments."""
 
 from datetime import date
+from urllib.parse import urlparse
 
 from fastapi import (
     APIRouter,
@@ -712,7 +713,12 @@ def update_ticket_form(
             status_code=status.HTTP_303_SEE_OTHER,
         )
     response = _ticket_detail(request, session, user, project, ticket, saved=True)
-    response.headers["HX-Trigger"] = f"refresh-ticket-card-{ticket.id}"
+    current_path = urlparse(request.headers.get("HX-Current-URL", "")).path
+    location_changed = "status" in changed_fields or "sprint_id" in changed_fields
+    if location_changed or current_path.endswith("/backlog"):
+        response.headers["HX-Refresh"] = "true"
+    else:
+        response.headers["HX-Trigger"] = f"refresh-ticket-card-{ticket.id}"
     return response
 
 
