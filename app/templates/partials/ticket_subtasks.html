@@ -1,0 +1,71 @@
+<section id="ticket-subtasks" class="ticket-subtasks" aria-labelledby="ticket-subtasks-heading"
+         data-subtask-completed="{{ subtask_completed }}" data-subtask-total="{{ subtasks|length }}">
+  <div class="ticket-subtasks-header">
+    <h3 id="ticket-subtasks-heading">Subtasks</h3>
+    <span>{{ subtasks|length }}</span>
+  </div>
+  <div class="subtask-progress" aria-label="Subtask progress">
+    <div class="subtask-progress-label"><span>{{ subtask_completed }} of {{ subtasks|length }} complete</span><strong>{{ subtask_percent }}%</strong></div>
+    <div class="subtask-progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ subtask_percent }}">
+      <span style="width: {{ subtask_percent }}%"></span>
+    </div>
+  </div>
+  {% if subtask_error %}<p class="form-error" role="alert">{{ subtask_error }}</p>{% endif %}
+  <div class="ticket-subtask-list">
+    {% for subtask in subtasks %}
+    <details class="ticket-subtask{% if subtask.status.value == 'DONE' %} is-done{% endif %}">
+      <summary>
+        <input class="subtask-check" type="checkbox" name="subtask_status" value="DONE"
+               aria-label="Mark {{ subtask.title }} complete"
+               hx-patch="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/subtasks/{{ subtask.id }}"
+               hx-trigger="change" hx-vals='js:{subtask_status: event.target.checked ? "DONE" : "TODO"}'
+               hx-params="subtask_status,_csrf"
+               hx-include="[name='_csrf']" hx-target="#ticket-subtasks" hx-swap="outerHTML"
+               onclick="event.stopPropagation()"{% if subtask.status.value == 'DONE' %} checked{% endif %}>
+        <strong class="ticket-subtask-title">{{ subtask.title }}</strong>
+        <button class="subtask-menu-button" type="button" aria-label="Subtask actions" title="Subtask actions"
+                onclick="event.stopPropagation(); const menu = this.nextElementSibling; document.querySelectorAll('.subtask-menu-panel').forEach(item => { if (item !== menu) item.hidden = true; }); menu.hidden = !menu.hidden;">☰</button>
+        <div class="subtask-menu-panel" hidden onclick="event.stopPropagation()">
+          <button type="button" onclick="const subtask = this.closest('.ticket-subtask'); subtask.open = true; subtask.querySelector('.ticket-subtask-edit').hidden = false; this.closest('.subtask-menu-panel').hidden = true;">Edit</button>
+          <button type="button" class="is-danger"
+                  hx-delete="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/subtasks/{{ subtask.id }}"
+                  hx-include="[name='_csrf']" hx-target="#ticket-subtasks" hx-swap="outerHTML"
+                  hx-confirm="Delete this subtask?">Delete</button>
+        </div>
+      </summary>
+      {% if subtask.description %}<p>{{ subtask.description | markdown | safe }}</p>{% else %}<p class="ticket-subtask-empty">No description provided.</p>{% endif %}
+      <div class="ticket-subtask-edit" id="subtask-edit-{{ subtask.id }}" hidden>
+        <div class="app-form">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <label for="subtask-title-{{ subtask.id }}">Title</label>
+            <input id="subtask-title-{{ subtask.id }}" name="subtask_title" value="{{ subtask.title }}" maxlength="255" required>
+          <label for="subtask-description-{{ subtask.id }}">Description</label>
+            <textarea id="subtask-description-{{ subtask.id }}" name="subtask_description" rows="3" maxlength="5000">{{ subtask.description }}</textarea>
+          <button class="app-secondary-button" type="button"
+                  hx-patch="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/subtasks/{{ subtask.id }}"
+                  hx-trigger="click"
+                  hx-vals='js:{subtask_title: document.getElementById("subtask-title-{{ subtask.id }}").value, subtask_description: document.getElementById("subtask-description-{{ subtask.id }}").value}'
+                  hx-include="#subtask-edit-{{ subtask.id }} [name='_csrf']"
+                  hx-params="subtask_title,subtask_description,_csrf"
+                  hx-target="#ticket-subtasks" hx-swap="outerHTML">Save subtask</button>
+        </div>
+      </div>
+    </details>
+    {% else %}<p class="ticket-subtasks-empty">No subtasks yet.</p>{% endfor %}
+  </div>
+  <details class="ticket-subtask-create-details"
+           ontoggle="if (this.open) requestAnimationFrame(() => this.querySelector('[name=\"subtask_title\"]').focus())">
+    <summary>Add a subtask</summary>
+    <div class="app-form ticket-subtask-form">
+      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+      <label class="sr-only" for="new-subtask-title">Subtask title</label>
+      <input id="new-subtask-title" name="subtask_title" maxlength="255" required placeholder="Subtask title">
+      <label class="sr-only" for="new-subtask-description">Subtask description</label>
+      <textarea id="new-subtask-description" name="subtask_description" rows="2" maxlength="5000" placeholder="Description (optional)"></textarea>
+      <button class="app-primary-button" type="button"
+              hx-post="/projects/{{ project.slug }}/tickets/{{ ticket.ticket_number }}/subtasks"
+              hx-include="closest .ticket-subtask-form" hx-params="subtask_title,subtask_description,_csrf"
+              hx-target="#ticket-subtasks" hx-swap="outerHTML">Add subtask</button>
+    </div>
+  </details>
+</section>

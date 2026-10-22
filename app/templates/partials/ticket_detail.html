@@ -20,6 +20,10 @@
       <a class="app-ghost-button" href="/projects/{{ project.slug }}">Back to board</a>
       {% endif %}
     </div>
+    <div class="ticket-title-field">
+      <label class="sr-only" for="detail-title">Work item title</label>
+      <input id="detail-title" name="title" value="{{ form_values['title'] }}" required>
+    </div>
     {% if development_rows %}
     <div class="ticket-development-badges" aria-label="Linked development status">
       {% for row in development_rows %}{% if row.kind.value == 'PULL_REQUEST' %}
@@ -36,10 +40,6 @@
     {% set member_ids = members | map(attribute='id') | list %}
     {% set sprint_ids = sprints | map(attribute='id') | list %}
     <input type="hidden" name="_csrf" value="{{ csrf_token }}">
-    <div class="ticket-title-field">
-      <label class="sr-only" for="detail-title">Work item title</label>
-      <input id="detail-title" name="title" value="{{ form_values['title'] }}" required>
-    </div>
     {% if stage >= 0 %}
     <p class="sr-only">Stage: {{ (status_labels|default({})).get(form_values['status'], form_values['status']) }}</p>
     <div class="my-request-steps ticket-detail-steps{% if stage == 3 %} is-done{% endif %}" aria-hidden="true">
@@ -60,7 +60,11 @@
         <button type="button" class="app-ghost-button" data-description-cancel>Cancel</button>
       </div>
     </div>
+    {% include "partials/ticket_subtasks.html" %}
     {% include "partials/ticket_attachments.html" %}
+    <details class="ticket-edit-details">
+      <summary>Edit ticket</summary>
+      <div class="ticket-edit-fields">
     <div class="ticket-detail-grid">
       <div>
         <label for="detail-type">Category</label>
@@ -117,6 +121,8 @@
     <div class="ticket-detail-actions">
       <button class="app-primary-button">Save changes</button>
     </div>
+      </div>
+    </details>
     <section class="ticket-development" aria-labelledby="ticket-development-heading">
       <h3 id="ticket-development-heading">Development</h3>
       <div class="ticket-copy-row ticket-branch-command">

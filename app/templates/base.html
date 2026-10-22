@@ -46,6 +46,7 @@
     <header class="auth-header"><a href="/login" class="app-brand">Kanban Flow</a></header>
   {% endif %}
   <main id="main-content"{% if user %} class="app-main" :inert="isMobile && navOpen"{% else %} class="auth-main"{% endif %}>{% block content %}{% endblock %}</main>
+  {% if user %}<div class="companion-cat-widget"><button id="neko-toggle" class="cat-toggle" type="button" aria-pressed="true">Neko on</button></div>{% endif %}
   {% if user %}</div>{% endif %}
 </body>
 </html>

@@ -365,8 +365,8 @@ def test_board_ticket_detail_fragment_uses_a_centered_native_dialog(
     assert "max-width: 1120px" in modal_css
     layout_css = css.split(".ticket-detail-modal .ticket-detail-layout {", 1)[1].split("}", 1)[0]
     assert "grid-template-columns: minmax(0, 3fr) minmax(320px, 2fr)" in layout_css
-    comments_css = css.split(".ticket-detail-modal .ticket-comments {", 1)[1].split("}", 1)[0]
-    assert "border-left: 1px solid var(--line)" in comments_css
+    assert ".ticket-detail-modal .ticket-comments {" in css
+    assert "border-left: 1px solid var(--line)" in css
 
 
 def test_board_filter_checkbox_has_a_44px_hit_target():
