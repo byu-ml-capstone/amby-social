@@ -180,8 +180,8 @@ def test_detail_move_requests_a_board_refresh(client, web_world, engine, login_a
     )
 
     assert response.status_code == 200
-    assert response.headers.get("HX-Refresh") == "true"
-    assert "HX-Trigger" not in response.headers
+    assert response.headers["HX-Trigger"] == f"refresh-ticket-card-{web_world.ticket_id}"
+    assert "HX-Refresh" not in response.headers
     with Session(engine) as session:
         ticket = session.exec(select(Ticket).where(Ticket.id == web_world.ticket_id)).one()
         assert (ticket.status, ticket.sprint_id) == (TicketStatus.DONE, web_world.planning_id)

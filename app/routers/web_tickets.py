@@ -712,7 +712,7 @@ def update_ticket_form(
             status_code=status.HTTP_303_SEE_OTHER,
         )
     response = _ticket_detail(request, session, user, project, ticket, saved=True)
-    response.headers["HX-Refresh"] = "true"
+    response.headers["HX-Trigger"] = f"refresh-ticket-card-{ticket.id}"
     return response
 
 
