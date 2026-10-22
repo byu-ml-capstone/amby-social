@@ -55,6 +55,7 @@ from app.services import (
     sprint_chronology,
     update_ticket,
     create_subtask,
+    update_subtask,
 )
 
 router = APIRouter(tags=["web"])
