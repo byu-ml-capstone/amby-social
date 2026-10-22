@@ -1,7 +1,8 @@
 """Ticket pages: detail, edit, status, comments and attachments."""
 
+import json
 from datetime import date
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import (
     APIRouter,
@@ -713,12 +714,24 @@ def update_ticket_form(
             status_code=status.HTTP_303_SEE_OTHER,
         )
     response = _ticket_detail(request, session, user, project, ticket, saved=True)
-    current_path = urlparse(request.headers.get("HX-Current-URL", "")).path
+    current_url = urlparse(request.headers.get("HX-Current-URL", ""))
+    current_filters = parse_qs(current_url.query)
     location_changed = "status" in changed_fields or "sprint_id" in changed_fields
-    if location_changed or current_path.endswith("/backlog"):
+    filter_active = bool({"mine", "assignee_id", "type", "priority"} & current_filters.keys())
+    page_refresh_needed = (
+        location_changed
+        or current_url.path.endswith("/backlog")
+        or filter_active
+    )
+    if page_refresh_needed:
         response.headers["HX-Refresh"] = "true"
     else:
-        response.headers["HX-Trigger"] = f"refresh-ticket-card-{ticket.id}"
+        events = {f"refresh-ticket-card-{ticket.id}": {}}
+        if ticket.creator_id == user.id:
+            events[f"refresh-my-request-{ticket.id}"] = {"title": ticket.title}
+        response.headers["HX-Trigger"] = (
+            json.dumps(events) if len(events) > 1 else next(iter(events))
+        )
     return response
 
 
