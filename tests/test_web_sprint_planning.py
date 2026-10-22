@@ -221,6 +221,31 @@ def test_unscheduled_ticket_opens_editor_and_owner_can_delete(client, backlog_wo
     assert 'id="ticket-detail-root"' in page
 
 
+def test_backlog_ticket_save_refreshes_the_backlog_page(client, backlog_world, login_as):
+    login_as(backlog_world.owner.email)
+
+    response = client.post(
+        f"/projects/{backlog_world.project.slug}/tickets/1",
+        data={
+            "title": "Renamed backlog ticket",
+            "description": "",
+            "type": "TASK",
+            "priority": "MEDIUM",
+            "status": "BACKLOG",
+            "sprint_id": "",
+            "_csrf": make_csrf_token(backlog_world.owner.id),
+        },
+        headers={
+            "HX-Request": "true",
+            "HX-Current-URL": f"http://testserver/projects/{backlog_world.project.slug}/backlog",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.headers["HX-Refresh"] == "true"
+    assert "HX-Trigger" not in response.headers
+
+
 def test_member_can_edit_unscheduled_ticket_but_cannot_delete(
     client, backlog_world, add_member, login_as
 ):
