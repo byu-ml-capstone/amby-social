@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,7 @@ from app.models import (
     Project,
     Sprint,
     SprintStatus,
+    Subtask,
     Ticket,
     TicketStatus,
     TicketType,
@@ -199,6 +201,91 @@ def test_detail_due_date_input_persists_and_clears(client, ticket_world, login_a
 
     assert cleared.status_code == 200
     assert _ticket(session, ticket_world).due_date is None
+
+
+def test_subtask_edit_and_completion_refresh_the_subtask_partial(
+    client, ticket_world, login_as, session
+):
+    login_as(ticket_world.owner.email)
+    csrf = make_csrf_token(ticket_world.owner.id)
+    url = f"/projects/{ticket_world.project.slug}/tickets/1"
+
+    created = client.post(
+        f"{url}/subtasks",
+        data={"subtask_title": "Original", "subtask_description": "Before", "_csrf": csrf},
+        headers={"HX-Request": "true"},
+    )
+    assert created.status_code == 200
+    subtask = session.exec(select(Subtask).where(Subtask.ticket_id == ticket_world.ticket_id)).one()
+
+    edited = client.patch(
+        f"{url}/subtasks/{subtask.id}",
+        data={
+            "subtask_title": "Updated",
+            "subtask_description": "After",
+            "_csrf": csrf,
+        },
+        headers={"HX-Request": "true"},
+    )
+    assert edited.status_code == 200
+    assert 'class="ticket-subtask-title">Updated</strong>' in edited.text
+    assert "After" in edited.text
+
+    completed = client.patch(
+        f"{url}/subtasks/{subtask.id}",
+        data={"subtask_status": "DONE", "_csrf": csrf},
+        headers={"HX-Request": "true"},
+    )
+    assert completed.status_code == 200
+    assert 'data-subtask-completed="1" data-subtask-total="1"' in completed.text
+    assert 'aria-valuenow="100"' in completed.text
+
+
+def test_ticket_save_button_is_outside_the_collapsible_edit_section(
+    client, ticket_world, login_as
+):
+    login_as(ticket_world.owner.email)
+    response = client.get(
+        f"/projects/{ticket_world.project.slug}/tickets/1",
+        headers={"HX-Request": "true"},
+    )
+
+    edit_start = response.text.index('<details class="ticket-edit-details">')
+    edit_end = response.text.index("</details>", edit_start)
+    save_button = response.text.index(">Save changes</button>")
+
+    assert response.status_code == 200
+    assert save_button > edit_end
+
+
+def test_hidden_subtask_titles_do_not_block_ticket_form_submission(
+    client, ticket_world, login_as
+):
+    login_as(ticket_world.owner.email)
+    csrf = make_csrf_token(ticket_world.owner.id)
+    url = f"/projects/{ticket_world.project.slug}/tickets/1"
+    client.post(
+        f"{url}/subtasks",
+        data={"subtask_title": "Existing", "_csrf": csrf},
+        headers={"HX-Request": "true"},
+    )
+
+    class SubtaskTitleFields(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.required = []
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if tag == "input" and attributes.get("name") == "subtask_title":
+                self.required.append("required" in attributes)
+
+    response = client.get(url, headers={"HX-Request": "true"})
+    fields = SubtaskTitleFields()
+    fields.feed(response.text)
+
+    assert response.status_code == 200
+    assert fields.required == [False, False]
 
 
 def test_member_can_update_ticket_details(client, ticket_world, login_as, session):
