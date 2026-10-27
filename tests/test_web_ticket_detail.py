@@ -241,6 +241,23 @@ def test_subtask_edit_and_completion_refresh_the_subtask_partial(
     assert 'aria-valuenow="100"' in completed.text
 
 
+def test_ticket_save_button_is_outside_the_collapsible_edit_section(
+    client, ticket_world, login_as
+):
+    login_as(ticket_world.owner.email)
+    response = client.get(
+        f"/projects/{ticket_world.project.slug}/tickets/1",
+        headers={"HX-Request": "true"},
+    )
+
+    edit_start = response.text.index('<details class="ticket-edit-details">')
+    edit_end = response.text.index("</details>", edit_start)
+    save_button = response.text.index(">Save changes</button>")
+
+    assert response.status_code == 200
+    assert save_button > edit_end
+
+
 def test_hidden_subtask_titles_do_not_block_ticket_form_submission(
     client, ticket_world, login_as
 ):

@@ -118,9 +118,6 @@
     </div>
     <div><label for="detail-resolution-notes">Outcome notes</label><textarea id="detail-resolution-notes" name="resolution_notes" rows="3">{{ form_values['resolution_notes'] }}</textarea></div>
     <div><label for="detail-blocked-reason">Blocked reason</label><textarea id="detail-blocked-reason" name="blocked_reason" rows="2" maxlength="500" placeholder="Leave blank when work is not blocked">{{ form_values['blocked_reason'] }}</textarea></div>
-    <div class="ticket-detail-actions">
-      <button class="app-primary-button">Save changes</button>
-    </div>
       </div>
     </details>
     <section class="ticket-development" aria-labelledby="ticket-development-heading">
@@ -163,6 +160,9 @@
       </div>
     </section>
     {% endif %}
+    <div class="ticket-detail-actions">
+      <button class="app-primary-button">Save changes</button>
+    </div>
   </form>
   {% include "partials/ticket_comments.html" %}
   </div>
