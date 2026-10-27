@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from html.parser import HTMLParser
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,10 +13,10 @@ from app.models import (
     Project,
     Sprint,
     SprintStatus,
+    Subtask,
     Ticket,
     TicketStatus,
     TicketType,
-    Subtask,
     WebhookType,
 )
 from app.notifications import EVENT_TICKET_DONE
@@ -238,6 +239,36 @@ def test_subtask_edit_and_completion_refresh_the_subtask_partial(
     assert completed.status_code == 200
     assert 'data-subtask-completed="1" data-subtask-total="1"' in completed.text
     assert 'aria-valuenow="100"' in completed.text
+
+
+def test_hidden_subtask_titles_do_not_block_ticket_form_submission(
+    client, ticket_world, login_as
+):
+    login_as(ticket_world.owner.email)
+    csrf = make_csrf_token(ticket_world.owner.id)
+    url = f"/projects/{ticket_world.project.slug}/tickets/1"
+    client.post(
+        f"{url}/subtasks",
+        data={"subtask_title": "Existing", "_csrf": csrf},
+        headers={"HX-Request": "true"},
+    )
+
+    class SubtaskTitleFields(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.required = []
+
+        def handle_starttag(self, tag, attrs):
+            attributes = dict(attrs)
+            if tag == "input" and attributes.get("name") == "subtask_title":
+                self.required.append("required" in attributes)
+
+    response = client.get(url, headers={"HX-Request": "true"})
+    fields = SubtaskTitleFields()
+    fields.feed(response.text)
+
+    assert response.status_code == 200
+    assert fields.required == [False, False]
 
 
 def test_member_can_update_ticket_details(client, ticket_world, login_as, session):
