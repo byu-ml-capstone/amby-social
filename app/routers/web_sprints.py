@@ -290,12 +290,39 @@ def _history_rows(session: Session, sprint_ids: list[str]):
     ).all()
 
 
-def _history_delay_total(sprint: Sprint, rows: list[tuple[SprintTicketHistory, Ticket]]) -> int:
-    return sum(
-        max(0, (sprint.end_date - ticket.first_sprint_entered_at.date()).days)
-        for history, ticket in rows
-        if not history.was_completed and ticket.first_sprint_entered_at
-    )
+def _times_rolled_over(
+    session: Session, sprints: list[Sprint], rows: list[tuple[SprintTicketHistory, Ticket]]
+) -> dict[tuple[str, str], int]:
+    """How many times each unfinished ticket had rolled over as of that sprint's close.
+
+    Counted from history rather than Ticket.rollover_count, so a closed sprint reads the
+    same after later sprints close.
+    """
+    end_dates = {sprint.id: sprint.end_date for sprint in sprints}
+    ticket_ids = {history.ticket_id for history, _ in rows if not history.was_completed}
+    if not ticket_ids:
+        return {}
+    misses = session.exec(
+        select(SprintTicketHistory.ticket_id, Sprint.end_date)
+        .join(Sprint, Sprint.id == SprintTicketHistory.sprint_id)
+        .where(
+            SprintTicketHistory.ticket_id.in_(ticket_ids),
+            SprintTicketHistory.was_completed.is_(False),
+        )
+    ).all()
+    return {
+        (history.sprint_id, history.ticket_id): sum(
+            ticket_id == history.ticket_id and end_date <= end_dates[history.sprint_id]
+            for ticket_id, end_date in misses
+        )
+        for history, _ in rows
+        if not history.was_completed
+    }
+
+
+def _repeat_rollovers(sprint: Sprint, times: dict[tuple[str, str], int]) -> int:
+    # Same >= 2 threshold as the board's stale badge.
+    return sum(count >= 2 for (sprint_id, _), count in times.items() if sprint_id == sprint.id)
 
 
 def _close_preview(
@@ -888,9 +915,11 @@ def sprint_history(
         .where(Sprint.project_id == project.id, Sprint.status == SprintStatus.CLOSED)
         .order_by(Sprint.closed_at.desc(), Sprint.end_date.desc())
     ).all()
+    rows = _history_rows(session, [sprint.id for sprint in sprints])
     rows_by_sprint = {sprint.id: [] for sprint in sprints}
-    for history, ticket in _history_rows(session, [sprint.id for sprint in sprints]):
+    for history, ticket in rows:
         rows_by_sprint[history.sprint_id].append((history, ticket))
+    times = _times_rolled_over(session, sprints, rows)
     summaries = [
         {
             "sprint": sprint,
@@ -900,7 +929,7 @@ def sprint_history(
             "completed_count": sum(
                 history.was_completed for history, _ in rows_by_sprint[sprint.id]
             ),
-            "delay_total": _history_delay_total(sprint, rows_by_sprint[sprint.id]),
+            "repeat_rollovers": _repeat_rollovers(sprint, times),
         }
         for sprint in sprints
     ]
@@ -930,6 +959,7 @@ def sprint_history_detail(
     project, member = access
     sprint = _closed_sprint(session, project, sprint_id)
     rows = _history_rows(session, [sprint.id])
+    times = _times_rolled_over(session, [sprint], rows)
     return render(
         request,
         "sprint_history_detail.html",
@@ -942,7 +972,8 @@ def sprint_history_detail(
             "selected_sprint_id": sprint.id,
             "history": rows,
             "rollover_count": sum(not entry.was_completed for entry, _ in rows),
-            "delay_total": _history_delay_total(sprint, rows),
+            "repeat_rollovers": _repeat_rollovers(sprint, times),
+            "times_rolled_over": times,
             "report": get_report(session, sprint),
             "report_fields": REPORT_FIELDS,
         },
