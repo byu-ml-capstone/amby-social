@@ -44,7 +44,7 @@
     <ol>
       {% for request_ticket in my_requests %}
       {% set stage = ['BACKLOG', 'SELECTED', 'IN_PROGRESS', 'DONE'].index(request_ticket.status.value) %}
-      <li class="my-request">
+      <li class="my-request" @refresh-my-request-{{ request_ticket.id }}.window="$el.querySelector('.my-request-title').textContent = $event.detail.title">
         <button type="button" class="my-request-open" @click="ticketOpener = '{{ request_ticket.id }}'"
                 hx-get="/projects/{{ project.slug }}/tickets/{{ request_ticket.ticket_number }}"
                 hx-target="#ticket-detail-root" hx-swap="innerHTML">

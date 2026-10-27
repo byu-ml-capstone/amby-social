@@ -38,7 +38,7 @@
         <div class="app-form">
           <input type="hidden" name="_csrf" value="{{ csrf_token }}">
           <label for="subtask-title-{{ subtask.id }}">Title</label>
-            <input id="subtask-title-{{ subtask.id }}" name="subtask_title" value="{{ subtask.title }}" maxlength="255" required>
+            <input id="subtask-title-{{ subtask.id }}" name="subtask_title" value="{{ subtask.title }}" maxlength="255">
           <label for="subtask-description-{{ subtask.id }}">Description</label>
             <textarea id="subtask-description-{{ subtask.id }}" name="subtask_description" rows="3" maxlength="5000">{{ subtask.description }}</textarea>
           <button class="app-secondary-button" type="button"
@@ -59,7 +59,7 @@
     <div class="app-form ticket-subtask-form">
       <input type="hidden" name="_csrf" value="{{ csrf_token }}">
       <label class="sr-only" for="new-subtask-title">Subtask title</label>
-      <input id="new-subtask-title" name="subtask_title" maxlength="255" required placeholder="Subtask title">
+      <input id="new-subtask-title" name="subtask_title" maxlength="255" placeholder="Subtask title">
       <label class="sr-only" for="new-subtask-description">Subtask description</label>
       <textarea id="new-subtask-description" name="subtask_description" rows="2" maxlength="5000" placeholder="Description (optional)"></textarea>
       <button class="app-primary-button" type="button"
