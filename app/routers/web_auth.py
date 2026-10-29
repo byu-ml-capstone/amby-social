@@ -11,6 +11,7 @@ from fastapi import (
 )
 from fastapi.responses import RedirectResponse
 from pydantic import EmailStr, TypeAdapter, ValidationError
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -24,13 +25,14 @@ from app.auth import (
     verify_csrf,
     verify_password,
 )
-from app.db import get_session
+from app.db import begin_write, get_session
 from app.models import (
     ApiToken,
     GitHubConnectState,
     Project,
     ProjectMember,
     Role,
+    Ticket,
     User,
     utcnow,
 )
@@ -372,6 +374,7 @@ def delete_user_account(
             error="Current password is incorrect",
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
+    begin_write(session)  # the sole-owner check and the deletes must see the same owners
     owned_memberships = session.exec(
         select(ProjectMember).where(
             ProjectMember.user_id == user.id, ProjectMember.role == Role.OWNER
@@ -397,6 +400,8 @@ def delete_user_account(
             )
     for row in session.exec(select(ApiToken).where(ApiToken.user_id == user.id)).all():
         session.delete(row)
+    # Leaving every project: like remove_project_member, nothing stays assigned to them.
+    session.exec(update(Ticket).where(Ticket.assignee_id == user.id).values(assignee_id=None))
     for row in session.exec(select(ProjectMember).where(ProjectMember.user_id == user.id)).all():
         session.delete(row)
     for row in session.exec(
