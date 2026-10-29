@@ -55,6 +55,7 @@ from app.services import (
     sprint_chronology,
     update_ticket,
     create_subtask,
+    delete_subtask_record,
     update_subtask,
 )
 
@@ -836,11 +837,7 @@ def delete_subtask_form(
 ) -> Response:
     project, _ = project_and_member
     ticket = _project_ticket(session, project, ticket_number)
-    subtask = session.get(Subtask, subtask_id)
-    if subtask is None or subtask.ticket_id != ticket.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Subtask not found")
-    session.delete(subtask)
-    session.commit()
+    delete_subtask_record(session, ticket, subtask_id)
     return render(
         request,
         "partials/ticket_subtasks.html",

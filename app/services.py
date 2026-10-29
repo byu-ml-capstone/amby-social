@@ -1023,6 +1023,14 @@ def update_subtask(
     return subtask
 
 
+def delete_subtask_record(session: Session, ticket: Ticket, subtask_id: str) -> None:
+    subtask = session.get(Subtask, subtask_id)
+    if subtask is None or subtask.ticket_id != ticket.id:
+        raise NotFound("Subtask not found")
+    session.delete(subtask)
+    session.commit()
+
+
 def update_ticket(
     session: Session, ticket: Ticket, project: Project, *, commit: bool = True, **changes
 ) -> Ticket:
