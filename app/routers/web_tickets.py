@@ -485,18 +485,11 @@ def upload_ticket_attachments(
         for upload in files
     )
     try:
-        rows = attachments.attach_uploads(session, ticket, user.id, uploads)
+        attachments.attach_uploads(session, ticket, user.id, uploads)
     except HTTPException as exc:
-        session.rollback()
         return _render_ticket_attachments(
             request, session, user, project, ticket, error=exc.detail, status_code=exc.status_code
         )
-    try:
-        session.commit()
-    except Exception:
-        session.rollback()
-        attachments.discard(rows)
-        raise
     return _render_ticket_attachments(request, session, user, project, ticket)
 
 

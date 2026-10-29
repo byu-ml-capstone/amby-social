@@ -159,7 +159,7 @@ def attach_uploads(
     uploader_id: str,
     files: Iterable[tuple[str | None, str | None, bytes]],
 ) -> list[TicketAttachment]:
-    """Stage every upload or none. The caller commits; on 413 nothing is left on disk."""
+    """Store every upload or none; on any failure nothing is left on disk."""
     rows: list[TicketAttachment] = []
     used = project_usage(session, ticket.project_id)
     try:
@@ -188,7 +188,9 @@ def attach_uploads(
         begin_write(session)
         if project_usage(session, ticket.project_id) > PROJECT_QUOTA_BYTES:
             raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, _QUOTA_FULL)
+        session.commit()
     except BaseException:
+        session.rollback()
         discard(rows)
         raise
     return rows
