@@ -19,6 +19,7 @@ from app.github import (
 )
 from app.github_sync import (
     disconnect_project_github,
+    save_installation,
     save_project_repositories,
     sync_open_pull_requests,
 )
@@ -29,7 +30,6 @@ from app.models import (
     ProjectGitHubRepository,
     ProjectMember,
     User,
-    utcnow,
 )
 from app.routers.web_settings import render_settings
 
@@ -163,25 +163,9 @@ def github_oauth_callback(
             status_code=status.HTTP_303_SEE_OTHER,
         )
 
-    installation = session.exec(
-        select(GitHubInstallation).where(
-            GitHubInstallation.github_installation_id == installation_id
-        )
-    ).first()
-    if installation is None:
-        installation = GitHubInstallation(
-            github_installation_id=installation_id,
-            account_id=account_id,
-            account_login=account_login.strip(),
-            connected_by_id=user.id,
-        )
-    else:
-        installation.account_id = account_id
-        installation.account_login = account_login.strip()
-        installation.connected_by_id = user.id
-        installation.updated_at = utcnow()
-    session.add(installation)
-    session.commit()
+    save_installation(
+        session, installation_id, account_id=account_id, account_login=account_login, user=user
+    )
 
     selection_state = issue_github_state(
         session,

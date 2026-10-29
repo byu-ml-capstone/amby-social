@@ -27,6 +27,7 @@ from app.models import (
     Ticket,
     TicketGitLink,
     TicketStatus,
+    User,
     utcnow,
 )
 from app.services import set_status, slugify
@@ -97,6 +98,32 @@ def ticket_development(session: Session, ticket: Ticket) -> list[TicketDevelopme
             )
         )
     return development
+
+
+def save_installation(
+    session: Session, installation_id: int, *, account_id: int, account_login: str, user: User
+) -> GitHubInstallation:
+    """Record a verified GitHub App installation and who connected it."""
+    installation = session.exec(
+        select(GitHubInstallation).where(
+            GitHubInstallation.github_installation_id == installation_id
+        )
+    ).first()
+    if installation is None:
+        installation = GitHubInstallation(
+            github_installation_id=installation_id,
+            account_id=account_id,
+            account_login=account_login.strip(),
+            connected_by_id=user.id,
+        )
+    else:
+        installation.account_id = account_id
+        installation.account_login = account_login.strip()
+        installation.connected_by_id = user.id
+        installation.updated_at = utcnow()
+    session.add(installation)
+    session.commit()
+    return installation
 
 
 def save_project_repositories(
