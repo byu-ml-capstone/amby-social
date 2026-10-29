@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
+from app.db import begin_write
 from app.models import (
     Project,
     ReportAuthor,
@@ -125,8 +126,7 @@ def save_report(
     changes: dict[str, str],
     author: ReportAuthor = ReportAuthor.HUMAN,
 ) -> SprintReport:
-    if report.is_finalized:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Sprint report is finalized")
+    _lock_unfinalized(session, report)
     if author is ReportAuthor.MCP_CLIENT:
         missing = ungrounded_facts("\n".join(changes.values()), build_payload(session, sprint))
         if missing:
@@ -148,9 +148,16 @@ def save_report(
     return report
 
 
-def finalize_report(session: Session, report: SprintReport, user: User) -> SprintReport:
+def _lock_unfinalized(session: Session, report: SprintReport) -> None:
+    # Re-read under the write lock: the copy in hand may predate a finalize that just committed.
+    begin_write(session)
+    session.refresh(report)
     if report.is_finalized:
         raise HTTPException(status.HTTP_409_CONFLICT, "Sprint report is finalized")
+
+
+def finalize_report(session: Session, report: SprintReport, user: User) -> SprintReport:
+    _lock_unfinalized(session, report)
     report.is_finalized = True
     report.finalized_by = user.id
     report.finalized_at = utcnow()
