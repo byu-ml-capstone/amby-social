@@ -4,7 +4,6 @@ from pathlib import Path
 import httpx
 import pytest
 from cryptography.fernet import Fernet
-from fastapi import HTTPException
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
 
@@ -13,6 +12,7 @@ import app.main as main
 import app.notifications as notifications
 from app import attachments
 from app.config import settings
+from app.errors import Invalid
 from app.gmail import GmailAuthError, encrypt_token
 from app.gmail_sync import sync_all, sync_connection
 from app.models import (
@@ -611,7 +611,7 @@ def test_rejected_ticket_leaves_no_attachment_files(session, world, monkeypatch)
     _, _, connection = world
 
     def reject(*args, **kwargs):
-        raise HTTPException(422, "title must not be empty")
+        raise Invalid("title must not be empty")
 
     monkeypatch.setattr(gmail_sync, "create_ticket", reject)
     gmail = FakeGmail([_mail_with(attachment_part("att-1", "brief.pdf"))])

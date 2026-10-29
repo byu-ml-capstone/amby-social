@@ -2,9 +2,9 @@
 
 import httpx
 from cryptography.fernet import InvalidToken
-from fastapi import HTTPException, status
 from sqlmodel import Session, select
 
+from app.errors import Invalid, NotFound
 from app.gmail import GmailClient, decrypt_token, encrypt_token
 from app.models import GmailConnection, GmailConnectionStatus, Priority, Project, TicketType, User
 
@@ -16,7 +16,7 @@ def get_connection(session: Session, project: Project) -> GmailConnection:
         select(GmailConnection).where(GmailConnection.project_id == project.id)
     ).first()
     if connection is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Gmail is not connected")
+        raise NotFound("Gmail is not connected")
     return connection
 
 
@@ -73,12 +73,10 @@ def save_label_mapping(
 ) -> None:
     """Store {label_id: {"name", "type", "priority"}}, the shape gmail_sync reads."""
     if not selected <= set(choices):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Invalid label mapping")
+        raise Invalid("Invalid label mapping")
     names = {label["id"]: label["name"] for label in mailbox_labels}
     if not selected <= set(names):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "Selected label is not available"
-        )
+        raise Invalid("Selected label is not available")
     connection.label_mapping = {
         label_id: {
             "name": names[label_id],

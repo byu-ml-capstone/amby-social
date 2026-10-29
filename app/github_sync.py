@@ -6,12 +6,13 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import BackgroundTasks, HTTPException, status
+from fastapi import BackgroundTasks
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import Settings, settings
 from app.db import begin_write
+from app.errors import Conflict
 from app.github import AvailableRepository, GitHubClient
 from app.models import (
     GitHubArtifact,
@@ -149,10 +150,7 @@ def save_project_repositories(
     else:
         session.refresh(binding)
     if binding.installation_id != installation.id:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "Project already uses another GitHub installation",
-        )
+        raise Conflict("Project already uses another GitHub installation")
 
     now = utcnow()
     existing = {

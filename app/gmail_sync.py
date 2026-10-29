@@ -3,13 +3,14 @@ import logging
 import time
 
 import httpx
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks
 from sqlalchemy import Engine, and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app import attachments
 from app.db import get_engine
+from app.errors import DomainError
 from app.gmail import GmailAuthError, GmailClient, decrypt_token
 from app.gmail_connections import REVOKED, mark_needs_reauth
 from app.gmail_parse import ParsedEmail, parse_message
@@ -182,7 +183,7 @@ def _import_message(
     except IntegrityError:
         session.rollback()  # another worker imported this message first
         return None
-    except HTTPException as exc:  # ticket validation; a retry would fail the same way
+    except DomainError as exc:  # ticket validation; a retry would fail the same way
         session.rollback()
         return f"{_SKIPPED} {message['id']}: {exc.detail}"
     finally:

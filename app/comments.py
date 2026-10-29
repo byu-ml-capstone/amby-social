@@ -1,8 +1,9 @@
 """Ticket comments: who may write, edit and delete them, and who gets a mention."""
 
-from fastapi import BackgroundTasks, HTTPException, status
+from fastapi import BackgroundTasks
 from sqlmodel import Session, select
 
+from app.errors import Forbidden, Invalid, NotFound
 from app.models import Project, ProjectMember, Role, Ticket, TicketComment, User, utcnow
 from app.notifications import schedule_comment_mention
 
@@ -20,7 +21,7 @@ def can_delete(comment: TicketComment, user: User, role: Role) -> bool:
 def get_comment(session: Session, ticket: Ticket, comment_id: str) -> TicketComment:
     comment = session.get(TicketComment, comment_id)
     if comment is None or comment.ticket_id != ticket.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found")
+        raise NotFound("Comment not found")
     return comment
 
 
@@ -34,9 +35,7 @@ def _mentioned_members(session: Session, project: Project, mention_ids: list[str
         .where(ProjectMember.project_id == project.id, User.id.in_(mention_ids))
     ).all()
     if len(users) != len(mention_ids):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "Mentions must be project members"
-        )
+        raise Invalid("Mentions must be project members")
     by_id = {user.id: user for user in users}
     return [by_id[user_id] for user_id in mention_ids]
 
@@ -46,10 +45,9 @@ def _clean_input(
 ) -> tuple[str, list[User]]:
     body = body.strip()
     if not body:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Comment cannot be empty")
+        raise Invalid("Comment cannot be empty")
     if len(body) > COMMENT_MAX_LENGTH:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             f"Comment must be at most {COMMENT_MAX_LENGTH} characters",
         )
     return body, _mentioned_members(session, project, mention_ids)
@@ -90,7 +88,7 @@ def edit_comment(
 ) -> TicketComment:
     """Only the author edits; only people newly mentioned by the edit are notified."""
     if not can_edit(comment, editor):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the author can edit this comment")
+        raise Forbidden("Only the author can edit this comment")
     body, mentioned = _clean_input(session, project, body, mention_ids)
     previous = set(comment.mentioned_user_ids)
     comment.body = body
@@ -106,6 +104,6 @@ def edit_comment(
 
 def delete_comment(session: Session, comment: TicketComment, user: User, role: Role) -> None:
     if not can_delete(comment, user, role):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot delete this comment")
+        raise Forbidden("Cannot delete this comment")
     session.delete(comment)
     session.commit()

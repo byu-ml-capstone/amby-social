@@ -12,7 +12,6 @@ import threading
 from collections.abc import Iterable
 from pathlib import Path
 
-from fastapi import HTTPException, status
 from fastapi.responses import FileResponse
 from PIL import Image, ImageOps
 from sqlalchemy import func
@@ -20,6 +19,7 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.db import begin_write
+from app.errors import Forbidden, NotFound, TooLarge
 from app.models import AttachmentSource, Role, Ticket, TicketAttachment, User
 
 ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
@@ -165,8 +165,7 @@ def attach_uploads(
     try:
         for filename, declared_type, data in files:
             if len(data) > ATTACHMENT_MAX_BYTES:
-                raise HTTPException(
-                    status.HTTP_413_CONTENT_TOO_LARGE,
+                raise TooLarge(
                     f"{clean_filename(filename)} is larger than 10 MB",
                 )
             row = store(
@@ -180,14 +179,14 @@ def attach_uploads(
             rows.append(row)
             used += row.size_bytes
             if used > PROJECT_QUOTA_BYTES:
-                raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, _QUOTA_FULL)
+                raise TooLarge(_QUOTA_FULL)
             row.ticket_id = ticket.id
             session.add(row)
         # `used` was read before the files were processed; recount under the write lock so
         # two uploads at once can't both take the last of the quota.
         begin_write(session)
         if project_usage(session, ticket.project_id) > PROJECT_QUOTA_BYTES:
-            raise HTTPException(status.HTTP_413_CONTENT_TOO_LARGE, _QUOTA_FULL)
+            raise TooLarge(_QUOTA_FULL)
         session.commit()
     except BaseException:
         session.rollback()
@@ -206,9 +205,9 @@ def delete_attachment(
     """The uploader or an owner removes one attachment: its row, then its file."""
     row = session.get(TicketAttachment, attachment_id)
     if row is None or row.ticket_id != ticket.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
+        raise NotFound("Attachment not found")
     if not can_delete(row, user, role):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot delete this attachment")
+        raise Forbidden("Cannot delete this attachment")
     session.delete(row)
     session.commit()
     delete(row.project_id, attachment_id)  # after commit: a failure leaves an orphan file only
@@ -217,7 +216,7 @@ def delete_attachment(
 def file_response(row: TicketAttachment) -> FileResponse:
     target = path(row.project_id, row.id)
     if not target.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
+        raise NotFound("Attachment not found")
     response = FileResponse(
         target,
         media_type=row.content_type if row.is_image else OCTET_STREAM,

@@ -7,13 +7,13 @@ from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 import jwt
-from fastapi import HTTPException
 from itsdangerous import BadData, URLSafeTimedSerializer
 from sqlalchemy import update
 from sqlalchemy.orm.attributes import set_committed_value
 from sqlmodel import Session, select
 
 from app.config import Settings, settings
+from app.errors import BadRequest, Forbidden, NotFound
 from app.models import GitHubConnectState, Project, ProjectMember, Role, utcnow
 
 _STATE_TTL = timedelta(minutes=10)
@@ -84,21 +84,21 @@ def _validated_github_state(
         if not isinstance(nonce, str) or not nonce:
             raise ValueError
     except (BadData, KeyError, TypeError, ValueError):
-        raise HTTPException(400, "Invalid GitHub state") from None
+        raise BadRequest("Invalid GitHub state") from None
 
     row = session.get(GitHubConnectState, hashlib.sha256(nonce.encode()).hexdigest())
     if row is None:
-        raise HTTPException(400, "Invalid GitHub state")
+        raise BadRequest("Invalid GitHub state")
     if row.user_id != user_id:
-        raise HTTPException(403, "GitHub state belongs to another user")
+        raise Forbidden("GitHub state belongs to another user")
     if row.consumed_at is not None:
-        raise HTTPException(400, "GitHub state already used")
+        raise BadRequest("GitHub state already used")
     if _as_utc(row.expires_at) <= _as_utc(now or utcnow()):
-        raise HTTPException(400, "GitHub state expired")
+        raise BadRequest("GitHub state expired")
 
     project = session.get(Project, row.project_id)
     if project is None:
-        raise HTTPException(404, "Project not found")
+        raise NotFound("Project not found")
     membership = session.exec(
         select(ProjectMember).where(
             ProjectMember.project_id == row.project_id,
@@ -106,7 +106,7 @@ def _validated_github_state(
         )
     ).first()
     if membership is None or membership.role != Role.OWNER:
-        raise HTTPException(403, "Project owner role required")
+        raise Forbidden("Project owner role required")
     return row
 
 
@@ -137,11 +137,11 @@ def consume_github_state(
     )
     if claim.rowcount != 1:
         session.rollback()
-        raise HTTPException(400, "GitHub state already used")
+        raise BadRequest("GitHub state already used")
     session.commit()
     claimed = session.get(GitHubConnectState, row.id)
     if claimed is None:  # pragma: no cover - the row was updated in the same transaction
-        raise HTTPException(400, "Invalid GitHub state")
+        raise BadRequest("Invalid GitHub state")
     set_committed_value(claimed, "consumed_at", _as_utc(claimed.consumed_at))
     return claimed
 
