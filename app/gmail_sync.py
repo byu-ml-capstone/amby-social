@@ -19,6 +19,7 @@ from app.models import (
     IntegrationDelivery,
     Priority,
     Project,
+    ProjectMember,
     TicketAttachment,
     TicketType,
     User,
@@ -235,6 +236,18 @@ def sync_connection(session: Session, connection: GmailConnection, gmail: GmailC
     session.commit()
 
 
+def _connector_is_member(session: Session, connection: GmailConnection) -> bool:
+    return (
+        session.exec(
+            select(ProjectMember.id).where(
+                ProjectMember.project_id == connection.project_id,
+                ProjectMember.user_id == connection.user_id,
+            )
+        ).first()
+        is not None
+    )
+
+
 def sync_all(engine: Engine | None = None) -> None:
     engine = engine or get_engine()
     with Session(engine) as session:
@@ -248,6 +261,16 @@ def sync_all(engine: Engine | None = None) -> None:
             with Session(engine) as session:
                 connection = session.get(GmailConnection, connection_id)
                 if connection is None or connection.status != GmailConnectionStatus.ACTIVE:
+                    continue
+                if not _connector_is_member(session, connection):
+                    # Tickets are created as the person who connected Gmail; once they leave
+                    # the project (or delete their account) an owner has to reconnect.
+                    connection.status = GmailConnectionStatus.NEEDS_REAUTH
+                    connection.last_error = (
+                        "The person who connected Gmail left the project. Reconnect Gmail."
+                    )
+                    session.add(connection)
+                    session.commit()
                     continue
                 try:
                     sync_connection(session, connection, gmail)

@@ -21,6 +21,7 @@ from app.models import (
     GmailConnectionStatus,
     Priority,
     ProjectChatWebhook,
+    ProjectMember,
     Ticket,
     TicketAttachment,
     TicketType,
@@ -419,6 +420,30 @@ def test_sync_all_marks_revoked_connection_for_reauth(engine, session, world, mo
     assert "Reconnect" in connection.last_error
     sync_all(engine)
     assert gmail.token_calls == 1  # connections needing reauth are not polled
+
+
+def test_sync_all_stops_importing_once_the_connector_leaves_the_project(
+    engine, session, world, monkeypatch
+):
+    owner, project, connection = world
+    session.delete(
+        session.exec(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project.id, ProjectMember.user_id == owner.id
+            )
+        ).one()
+    )
+    session.commit()
+    gmail = FakeGmail([gmail_message("m1")])
+    monkeypatch.setattr(gmail_sync, "GmailClient", lambda: gmail)
+
+    sync_all(engine)
+
+    session.refresh(connection)
+    assert _tickets(session, project.id) == []
+    assert connection.status == GmailConnectionStatus.NEEDS_REAUTH
+    assert "Reconnect" in connection.last_error
+    assert gmail.token_calls == 0
 
 
 def test_sync_all_isolates_a_failing_connection(
