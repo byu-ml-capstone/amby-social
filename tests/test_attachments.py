@@ -171,3 +171,46 @@ def test_gif_over_the_pixel_cap_is_kept_as_a_download(monkeypatch):
     monkeypatch.setattr(attachments, "IMAGE_MAX_PIXELS", 100)
     data = image_bytes((20, 20), "GIF")
     assert attachments.prepare(data, "image/gif") == (data, "application/octet-stream", False)
+
+
+def test_concurrent_uploads_cannot_exceed_the_project_quota(
+    engine, make_user, make_project, monkeypatch
+):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from fastapi import HTTPException
+    from sqlmodel import Session
+
+    from app.models import Project, Ticket
+    from app.services import create_ticket
+
+    owner = make_user(email="ada@example.com")
+    project = make_project(owner)
+    with Session(engine) as session:
+        ticket_id = create_ticket(session, session.get(Project, project.id), owner, title="T").id
+    monkeypatch.setattr(attachments, "PROJECT_QUOTA_BYTES", 150)
+    real_prepare = attachments.prepare
+
+    def slow_prepare(data, declared_type):
+        time.sleep(0.2)  # both uploads read the old usage before either commits
+        return real_prepare(data, declared_type)
+
+    monkeypatch.setattr(attachments, "prepare", slow_prepare)
+
+    def upload(name: str) -> int:
+        with Session(engine) as session:
+            try:
+                ticket = session.get(Ticket, ticket_id)
+                files = [(name, "text/plain", b"x" * 100)]
+                attachments.attach_uploads(session, ticket, owner.id, files)
+                session.commit()
+            except HTTPException as exc:
+                return exc.status_code
+            return 201
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = sorted(pool.map(upload, ["a.txt", "b.txt"]))
+
+    with Session(engine) as session:
+        assert attachments.project_usage(session, project.id) == 100
+    assert results == [201, 413]
