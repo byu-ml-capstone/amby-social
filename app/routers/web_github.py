@@ -31,7 +31,7 @@ from app.models import (
     User,
     utcnow,
 )
-from app.routers.web_settings import _settings
+from app.routers.web_settings import render_settings
 
 router = APIRouter(tags=["web"])
 _REPOSITORY_IDS_FORM = Form(default=[])
@@ -247,7 +247,7 @@ def github_repository_selection(
     installation = _github_selection_installation(session, project, connect_state)
     with GitHubClient() as github:
         repositories = github.repositories(installation.github_installation_id)
-    return _settings(
+    return render_settings(
         request,
         session,
         user,
@@ -299,7 +299,7 @@ def save_github_repository_selection(
         session.rollback()
         failed = _sync_github_repositories(session, connection_ids, github)
     if failed:
-        return _settings(
+        return render_settings(
             request,
             session,
             user,
@@ -338,7 +338,7 @@ def retry_github_sync(
     with GitHubClient() as github:
         failed = _sync_github_repositories(session, connection_ids, github)
     if failed:
-        return _settings(
+        return render_settings(
             request,
             session,
             user,

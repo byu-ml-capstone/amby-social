@@ -53,7 +53,7 @@ _GMAIL_ERRORS = {
 }
 
 
-def _settings(
+def render_settings(
     request: Request,
     session: Session,
     user: User,
@@ -144,7 +144,7 @@ def project_settings(
     session: Session = Depends(get_session),
 ) -> Response:
     project, member = access
-    return _settings(
+    return render_settings(
         request,
         session,
         user,
@@ -168,7 +168,7 @@ def update_project_settings(
     try:
         update_project(session, project, name=name)
     except HTTPException as exc:
-        return _settings(
+        return render_settings(
             request,
             session,
             user,
@@ -205,7 +205,7 @@ def connect_chat_integration(
     try:
         set_chat_webhook(session, project, _chat_provider(provider), url)
     except HTTPException as exc:
-        return _settings(
+        return render_settings(
             request,
             session,
             user,
@@ -252,7 +252,7 @@ def add_project_member_settings(
     try:
         add_project_member(session, project, email, role)
     except HTTPException as exc:
-        return _settings(
+        return render_settings(
             request, session, user, project, member, error=exc.detail, status_code=exc.status_code
         )
     return RedirectResponse(
@@ -273,7 +273,7 @@ def update_project_member_settings(
     try:
         update_project_member(session, project, user_id, role)
     except HTTPException as exc:
-        return _settings(
+        return render_settings(
             request, session, user, project, member, error=exc.detail, status_code=exc.status_code
         )
     return RedirectResponse(
@@ -295,7 +295,7 @@ def remove_project_member_settings(
     try:
         remove_project_member(session, project, user_id)
     except HTTPException as exc:
-        return _settings(
+        return render_settings(
             request, session, user, project, member, error=exc.detail, status_code=exc.status_code
         )
     return RedirectResponse(
@@ -316,7 +316,7 @@ def delete_project_settings(
     try:
         delete_project(session, project, confirm)
     except HTTPException as exc:
-        return _settings(
+        return render_settings(
             request, session, user, project, member, error=exc.detail, status_code=exc.status_code
         )
     return RedirectResponse("/dashboard", status_code=status.HTTP_303_SEE_OTHER)

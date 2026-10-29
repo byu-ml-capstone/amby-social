@@ -26,7 +26,7 @@ from app.models import (
     TicketType,
     User,
 )
-from app.routers.web_settings import _settings
+from app.routers.web_settings import render_settings
 
 router = APIRouter(tags=["web"])
 _LABEL_IDS_FORM = Form(default=[])
@@ -161,7 +161,7 @@ def gmail_label_selection(
     connection = _connection(session, project)
     labels = _mailbox_labels(session, connection)
     if labels is None:
-        return _settings(
+        return render_settings(
             request,
             session,
             user,
@@ -173,7 +173,7 @@ def gmail_label_selection(
     labels.sort(
         key=lambda label: (label["id"] not in connection.label_mapping, label["name"].lower())
     )
-    return _settings(request, session, user, project, member, gmail_available_labels=labels)
+    return render_settings(request, session, user, project, member, gmail_available_labels=labels)
 
 
 @router.post(
@@ -208,7 +208,7 @@ def save_gmail_labels(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Invalid label mapping")
     labels = _mailbox_labels(session, connection)
     if labels is None:
-        return _settings(
+        return render_settings(
             request,
             session,
             user,
