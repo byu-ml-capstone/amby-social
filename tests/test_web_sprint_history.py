@@ -75,6 +75,8 @@ def history_world(make_user, make_project, add_member, engine):
         session.add_all([done, rolled])
         session.flush()
         newer_id = newer.id
+        older_id = older.id
+        rolled_id = rolled.id
         foreign_id = foreign.id
         rolled_number = rolled.ticket_number
         session.add_all(
@@ -102,6 +104,8 @@ def history_world(make_user, make_project, add_member, engine):
             outsider=outsider,
             project=project,
             newer_id=newer_id,
+            older_id=older_id,
+            rolled_id=rolled_id,
             foreign_id=foreign_id,
             rolled_number=rolled_number,
         )
@@ -118,7 +122,7 @@ def test_history_lists_closed_sprints_newest_first_with_totals(client, history_w
     assert "<dt>Committed</dt><dd>8 pts</dd>" in page.text
     assert "<dt>Completed</dt><dd>5 pts</dd>" in page.text
     assert "<dt>Rollover</dt><dd>1</dd>" in page.text
-    assert "<dt>Delayed</dt><dd>7 days</dd>" in page.text
+    assert "<dt>Rolled over 2+ times</dt><dd>0</dd>" in page.text
     assert "Velocity trend: 3 → 5 pts" in page.text
     assert f'href="/projects/{history_world.project.slug}/sprints" aria-current="page"' in page.text
 
@@ -135,7 +139,7 @@ def test_history_uses_labeled_metric_rows(client, history_world, login_as):
     assert "<dt>Completed</dt><dd>5 pts</dd>" in page.text
     assert "<dt>Completed tickets</dt><dd>0</dd>" in page.text
     assert "<dt>Rollover</dt><dd>1</dd>" in page.text
-    assert "<dt>Delayed</dt><dd>7 days</dd>" in page.text
+    assert "<dt>Rolled over 2+ times</dt><dd>0</dd>" in page.text
 
 
 def test_empty_history_keeps_its_message_inside_the_archive_surface(
@@ -161,6 +165,7 @@ def test_history_detail_uses_close_time_ticket_snapshot_and_is_read_only(
     assert page.status_code == 200
     assert "In progress" in page.text
     assert "5 pts at close" in page.text
+    assert "Rolled over 1×" in page.text
     assert "<dt>Rollover</dt><dd>1</dd>" in page.text
     ticket_path = f"/projects/{history_world.project.slug}/tickets/{history_world.rolled_number}"
     ticket_link = f'href="{ticket_path}"'
@@ -173,6 +178,37 @@ def test_history_detail_uses_close_time_ticket_snapshot_and_is_read_only(
     assert set(sprint_actions) == {"report", "report/finalize"}
     assert "Close sprint" not in page.text
     assert "Start sprint" not in page.text
+
+
+def test_rollover_times_count_history_and_stay_fixed_per_sprint(
+    client, history_world, login_as, engine
+):
+    """A ticket unfinished in two sprints reads 2× in the later one and still 1× in the earlier."""
+    with Session(engine) as session:
+        session.add(
+            SprintTicketHistory(
+                sprint_id=history_world.older_id,
+                ticket_id=history_world.rolled_id,
+                status_at_close=TicketStatus.IN_PROGRESS,
+                story_points_at_close=5,
+                was_completed=False,
+            )
+        )
+        session.commit()
+    login_as(history_world.owner.email)
+    base = f"/projects/{history_world.project.slug}/sprints"
+
+    newer = client.get(f"{base}/{history_world.newer_id}")
+    older = client.get(f"{base}/{history_world.older_id}")
+    summaries = client.get(base).text.split('<section class="sprint-history app-surface"', 1)[1]
+
+    assert "Rolled over 2×" in newer.text
+    assert "<dt>Rolled over 2+ times</dt><dd>1</dd>" in newer.text
+    assert "Rolled over 1×" in older.text
+    assert "<dt>Rolled over 2+ times</dt><dd>0</dd>" in older.text
+    newer_row, older_row = summaries.split("Sprint 1", 1)
+    assert "<dt>Rolled over 2+ times</dt><dd>1</dd>" in newer_row
+    assert "<dt>Rolled over 2+ times</dt><dd>0</dd>" in older_row
 
 
 def test_member_can_read_history(client, history_world, login_as):
