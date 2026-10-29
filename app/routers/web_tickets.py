@@ -20,7 +20,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import ValidationError
 from sqlmodel import Session, select
 
-from app import attachments
+from app import attachments, comments
 from app.auth import (
     current_user,
     project_owner,
@@ -47,7 +47,6 @@ from app.models import (
     User,
     utcnow,
 )
-from app.notifications import schedule_comment_mention
 from app.routers.web_common import COLUMNS, render
 from app.schemas import StatusUpdate, TicketUpdate
 from app.services import (
@@ -98,44 +97,6 @@ def _subtask_context(session: Session, ticket: Ticket) -> dict:
     }
 
 
-def _comment_members(session: Session, project: Project, mention_ids: list[str]) -> list[User]:
-    mention_ids = list(dict.fromkeys(mention_ids))
-    if not mention_ids:
-        return []
-    users = session.exec(
-        select(User)
-        .join(ProjectMember, ProjectMember.user_id == User.id)
-        .where(ProjectMember.project_id == project.id, User.id.in_(mention_ids))
-    ).all()
-    if len(users) != len(mention_ids):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "Mentions must be project members"
-        )
-    by_id = {user.id: user for user in users}
-    return [by_id[user_id] for user_id in mention_ids]
-
-
-def _comment_input(
-    session: Session, project: Project, body: str, mention_ids: list[str]
-) -> tuple[str, list[User]]:
-    body = body.strip()
-    if not body:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Comment cannot be empty")
-    if len(body) > 5000:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "Comment must be at most 5000 characters",
-        )
-    return body, _comment_members(session, project, mention_ids)
-
-
-def _project_comment(session: Session, ticket: Ticket, comment_id: str) -> TicketComment:
-    comment = session.get(TicketComment, comment_id)
-    if comment is None or comment.ticket_id != ticket.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Comment not found")
-    return comment
-
-
 def _ticket_comments(
     session: Session, project: Project, ticket: Ticket, viewer: User
 ) -> tuple[list[dict], list[User]]:
@@ -151,7 +112,6 @@ def _ticket_comments(
             ProjectMember.user_id == viewer.id,
         )
     ).one()
-    is_owner = viewer_membership.role == Role.OWNER
     names = {member.id: member.name or member.email for member in members}
     rows = session.exec(
         select(TicketComment, User)
@@ -169,8 +129,8 @@ def _ticket_comments(
                     for user_id in comment.mentioned_user_ids
                     if user_id in names and f"@{names[user_id]}" not in comment.body
                 ],
-                "can_edit": comment.author_id == viewer.id,
-                "can_delete": comment.author_id == viewer.id or is_owner,
+                "can_edit": comments.can_edit(comment, viewer),
+                "can_delete": comments.can_delete(comment, viewer, viewer_membership.role),
             }
             for comment, author in rows
         ],
@@ -393,7 +353,7 @@ def create_ticket_comment_form(
     project, _ = project_and_member
     ticket = _project_ticket(session, project, ticket_number)
     try:
-        body, mentioned_users = _comment_input(session, project, body, mention_ids or [])
+        comments.add_comment(session, project, ticket, user, body, mention_ids or [], tasks)
     except HTTPException as exc:
         if request.headers.get("HX-Request") != "true":
             return _ticket_detail(
@@ -415,15 +375,6 @@ def create_ticket_comment_form(
             error=exc.detail,
             status_code=exc.status_code,
         )
-    comment = TicketComment(
-        ticket_id=ticket.id,
-        author_id=user.id,
-        body=body,
-        mentioned_user_ids=[mentioned.id for mentioned in mentioned_users],
-    )
-    session.add(comment)
-    session.commit()
-    schedule_comment_mention(tasks, session, project, ticket, user, mentioned_users, body)
     if request.headers.get("HX-Request") == "true":
         return _render_ticket_comments(request, session, user, project, ticket)
     return RedirectResponse(
@@ -450,12 +401,14 @@ def edit_ticket_comment_form(
 ) -> Response:
     project, _ = project_and_member
     ticket = _project_ticket(session, project, ticket_number)
-    comment = _project_comment(session, ticket, comment_id)
-    if comment.author_id != user.id:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only the author can edit this comment")
+    comment = comments.get_comment(session, ticket, comment_id)
     try:
-        body, mentioned_users = _comment_input(session, project, body, mention_ids or [])
+        comments.edit_comment(
+            session, project, ticket, comment, user, body, mention_ids or [], tasks
+        )
     except HTTPException as exc:
+        if exc.status_code == status.HTTP_403_FORBIDDEN:
+            raise
         if request.headers.get("HX-Request") != "true":
             return _ticket_detail(
                 request,
@@ -476,16 +429,6 @@ def edit_ticket_comment_form(
             error=exc.detail,
             status_code=exc.status_code,
         )
-    previous_mentions = set(comment.mentioned_user_ids)
-    comment.body = body
-    comment.mentioned_user_ids = [mentioned.id for mentioned in mentioned_users]
-    comment.updated_at = utcnow()
-    session.add(comment)
-    session.commit()
-    new_mentions = [
-        mentioned for mentioned in mentioned_users if mentioned.id not in previous_mentions
-    ]
-    schedule_comment_mention(tasks, session, project, ticket, user, new_mentions, body)
     if request.headers.get("HX-Request") == "true":
         return _render_ticket_comments(request, session, user, project, ticket)
     return RedirectResponse(
@@ -509,11 +452,8 @@ def delete_ticket_comment_form(
 ) -> Response:
     project, membership = project_and_member
     ticket = _project_ticket(session, project, ticket_number)
-    comment = _project_comment(session, ticket, comment_id)
-    if comment.author_id != user.id and membership.role != Role.OWNER:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot delete this comment")
-    session.delete(comment)
-    session.commit()
+    comment = comments.get_comment(session, ticket, comment_id)
+    comments.delete_comment(session, comment, user, membership.role)
     if request.headers.get("HX-Request") == "true":
         return _render_ticket_comments(request, session, user, project, ticket)
     return RedirectResponse(
