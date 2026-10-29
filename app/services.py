@@ -13,10 +13,11 @@ from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlmodel import Session, select
 
 from app import attachments
-from app.auth import hash_password
+from app.auth import hash_password, verify_password
 from app.config import settings
 from app.db import begin_write
 from app.models import (
+    ApiToken,
     GitHubArtifact,
     GitHubConnectState,
     GitHubInstallation,
@@ -62,6 +63,8 @@ NULLABLE_TICKET_FIELDS = {
 }
 NAME_MAX_LENGTH = 100
 USER_NAME_MAX_LENGTH = 50
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_BYTES = 72  # bcrypt rejects longer input
 _EMAIL_TAKEN = "Email already registered"
 _PLANNING_SPRINT_EXISTS = "A planning sprint already exists"
 _ACTIVE_SPRINT_EXISTS = "An active sprint already exists"
@@ -93,10 +96,7 @@ def allocate_project_key(session: Session, name: str) -> str:
         suffix += 1
 
 
-def register_user(session: Session, *, name: str, email: str, password: str) -> User:
-    # Both registration routes use this service because the HTML form has no
-    # Pydantic model in front of it. Keep the database-facing validation and
-    # duplicate-email race handling in one place.
+def _clean_user_name(name: str) -> str:
     clean_name = name.strip()
     if not clean_name:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "name must not be blank")
@@ -105,6 +105,28 @@ def register_user(session: Session, *, name: str, email: str, password: str) -> 
             status.HTTP_422_UNPROCESSABLE_CONTENT,
             f"name must be at most {USER_NAME_MAX_LENGTH} characters",
         )
+    return clean_name
+
+
+def validate_password(password: str) -> None:
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Password must be at least {PASSWORD_MIN_LENGTH} characters",
+        )
+    if len(password.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            f"Password must be at most {PASSWORD_MAX_BYTES} bytes",
+        )
+
+
+def register_user(session: Session, *, name: str, email: str, password: str) -> User:
+    # Both registration routes use this service because the HTML form has no
+    # Pydantic model in front of it. Keep the database-facing validation and
+    # duplicate-email race handling in one place.
+    clean_name = _clean_user_name(name)
+    validate_password(password)
     normalized_email = email.lower()
     if session.exec(select(User).where(User.email == normalized_email)).first():
         raise HTTPException(status.HTTP_409_CONFLICT, _EMAIL_TAKEN)
@@ -122,6 +144,81 @@ def register_user(session: Session, *, name: str, email: str, password: str) -> 
         raise HTTPException(status.HTTP_409_CONFLICT, _EMAIL_TAKEN) from None
     session.refresh(user)
     return user
+
+
+def update_user_profile(session: Session, user: User, *, name: str, email: str) -> User:
+    clean_name = _clean_user_name(name)
+    normalized_email = email.lower()
+    taken = session.exec(
+        select(User).where(User.email == normalized_email, User.id != user.id)
+    ).first()
+    if taken is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, _EMAIL_TAKEN)
+    user.name = clean_name
+    user.email = normalized_email
+    session.add(user)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, _EMAIL_TAKEN) from None
+    return user
+
+
+def _require_current_password(user: User, current_password: str) -> None:
+    if not verify_password(current_password, user.password_hash):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Current password is incorrect")
+
+
+def change_user_password(
+    session: Session, user: User, *, current_password: str, new_password: str
+) -> None:
+    _require_current_password(user, current_password)
+    validate_password(new_password)
+    user.password_hash = hash_password(new_password)
+    session.add(user)
+    session.commit()
+
+
+def revoke_api_token(session: Session, user: User, token_id: str) -> None:
+    """Revoke one of the user's own tokens; unknown or already revoked ids are a no-op."""
+    token = session.exec(
+        select(ApiToken).where(ApiToken.id == token_id, ApiToken.user_id == user.id)
+    ).first()
+    if token is not None and token.revoked_at is None:
+        token.revoked_at = utcnow()
+        session.add(token)
+        session.commit()
+
+
+def delete_account(session: Session, user: User, *, current_password: str) -> None:
+    """Anonymize the user and remove their access; refused while they are a sole owner."""
+    _require_current_password(user, current_password)
+    begin_write(session)  # the sole-owner check and the deletes must see the same owners
+    owned_memberships = session.exec(
+        select(ProjectMember).where(
+            ProjectMember.user_id == user.id, ProjectMember.role == Role.OWNER
+        )
+    ).all()
+    # ponytail: one lookup per owned project; use NOT EXISTS if ownership counts grow.
+    for membership in owned_memberships:
+        if _owner_count(session, membership.project_id) == 1:
+            project = session.get(Project, membership.project_id)
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                f"Add another owner or delete {project.name} before deleting your account",
+            )
+    session.execute(delete(ApiToken).where(ApiToken.user_id == user.id))
+    # Leaving every project: like remove_project_member, nothing stays assigned to them.
+    session.exec(update(Ticket).where(Ticket.assignee_id == user.id).values(assignee_id=None))
+    session.execute(delete(ProjectMember).where(ProjectMember.user_id == user.id))
+    session.execute(delete(GitHubConnectState).where(GitHubConnectState.user_id == user.id))
+    user.name = "Deleted user"
+    user.email = f"deleted-{user.id}@deleted.invalid"
+    user.password_hash = "!"
+    user.deleted_at = utcnow()
+    session.add(user)
+    session.commit()
 
 
 def create_project(session: Session, name: str, start_date: date, user: User) -> Project:

@@ -11,34 +11,31 @@ from fastapi import (
 )
 from fastapi.responses import RedirectResponse
 from pydantic import EmailStr, TypeAdapter, ValidationError
-from sqlalchemy import update
-from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.auth import (
     DUMMY_HASH,
     SESSION_COOKIE,
     current_user,
-    hash_password,
     issue_api_token,
     optional_user,
     verify_csrf,
     verify_password,
 )
-from app.db import begin_write, get_session
+from app.db import get_session
 from app.models import (
     ApiToken,
-    GitHubConnectState,
-    Project,
-    ProjectMember,
-    Role,
-    Ticket,
     User,
-    utcnow,
 )
 from app.routers.api_auth import _set_session
 from app.routers.web_common import render
-from app.services import register_user
+from app.services import (
+    change_user_password,
+    delete_account,
+    register_user,
+    revoke_api_token,
+    update_user_profile,
+)
 
 router = APIRouter(tags=["web"])
 
@@ -113,24 +110,6 @@ def register_submit(
             {"user": None, "error": "Enter a valid email address"},
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
-    if len(password) < 8:
-        return render(
-            request,
-            "register.html",
-            {"user": None, "error": "Password must be at least 8 characters"},
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
-    # hash_password (bcrypt) raises ValueError past 72 UTF-8 bytes; the JSON route catches this
-    # in RegisterRequest's validator (app/schemas.py) before it ever reaches hash_password. This
-    # form-based route bypasses that schema, so the same guard belongs here too -- otherwise an
-    # over-length password crashes with a 500 instead of a normal re-rendered error.
-    if len(password.encode("utf-8")) > 72:
-        return render(
-            request,
-            "register.html",
-            {"user": None, "error": "Password must be at most 72 bytes"},
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
     try:
         user = register_user(session, name=name, email=str(email), password=password)
     except HTTPException as exc:
@@ -189,6 +168,11 @@ def _user_settings(
     )
 
 
+def _settings_error(request: Request, session: Session, user: User, exc: HTTPException) -> Response:
+    session.rollback()  # release the write lock a refused delete_account may hold
+    return _user_settings(request, session, user, error=exc.detail, status_code=exc.status_code)
+
+
 @router.get("/settings")
 def user_settings(
     request: Request,
@@ -214,17 +198,8 @@ def update_profile(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    name = name.strip()
-    if not name or len(name) > 50:
-        return _user_settings(
-            request,
-            session,
-            user,
-            error="Name must be between 1 and 50 characters",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
     try:
-        normalized_email = str(_email_adapter.validate_python(email)).lower()
+        normalized_email = str(_email_adapter.validate_python(email))
     except ValidationError:
         return _user_settings(
             request,
@@ -233,31 +208,10 @@ def update_profile(
             error="Enter a valid email address",
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
-    existing = session.exec(
-        select(User).where(User.email == normalized_email, User.id != user.id)
-    ).first()
-    if existing is not None:
-        return _user_settings(
-            request,
-            session,
-            user,
-            error="That email is already registered",
-            status_code=status.HTTP_409_CONFLICT,
-        )
-    user.name = name
-    user.email = normalized_email
-    session.add(user)
     try:
-        session.commit()
-    except IntegrityError:
-        session.rollback()
-        return _user_settings(
-            request,
-            session,
-            user,
-            error="That email is already registered",
-            status_code=status.HTTP_409_CONFLICT,
-        )
+        update_user_profile(session, user, name=name, email=normalized_email)
+    except HTTPException as exc:
+        return _settings_error(request, session, user, exc)
     return RedirectResponse("/settings?profile_saved=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -270,14 +224,6 @@ def update_password(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    if not verify_password(current_password, user.password_hash):
-        return _user_settings(
-            request,
-            session,
-            user,
-            error="Current password is incorrect",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
     if new_password != confirm_password:
         return _user_settings(
             request,
@@ -286,25 +232,12 @@ def update_password(
             error="New passwords do not match",
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
-    if len(new_password) < 8:
-        return _user_settings(
-            request,
-            session,
-            user,
-            error="Password must be at least 8 characters",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+    try:
+        change_user_password(
+            session, user, current_password=current_password, new_password=new_password
         )
-    if len(new_password.encode("utf-8")) > 72:
-        return _user_settings(
-            request,
-            session,
-            user,
-            error="Password must be at most 72 bytes",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
-    user.password_hash = hash_password(new_password)
-    session.add(user)
-    session.commit()
+    except HTTPException as exc:
+        return _settings_error(request, session, user, exc)
     return RedirectResponse("/settings?password_saved=1", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -349,13 +282,7 @@ def revoke_user_token(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    token = session.exec(
-        select(ApiToken).where(ApiToken.id == token_id, ApiToken.user_id == user.id)
-    ).first()
-    if token is not None and token.revoked_at is None:
-        token.revoked_at = utcnow()
-        session.add(token)
-        session.commit()
+    revoke_api_token(session, user, token_id)
     return RedirectResponse("/settings", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -366,54 +293,10 @@ def delete_user_account(
     user: User = Depends(current_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    if not verify_password(current_password, user.password_hash):
-        return _user_settings(
-            request,
-            session,
-            user,
-            error="Current password is incorrect",
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        )
-    begin_write(session)  # the sole-owner check and the deletes must see the same owners
-    owned_memberships = session.exec(
-        select(ProjectMember).where(
-            ProjectMember.user_id == user.id, ProjectMember.role == Role.OWNER
-        )
-    ).all()
-    # ponytail: one lookup per owned project; use NOT EXISTS if ownership counts grow.
-    for membership in owned_memberships:
-        other_owner = session.exec(
-            select(ProjectMember).where(
-                ProjectMember.project_id == membership.project_id,
-                ProjectMember.user_id != user.id,
-                ProjectMember.role == Role.OWNER,
-            )
-        ).first()
-        if other_owner is None:
-            project = session.get(Project, membership.project_id)
-            return _user_settings(
-                request,
-                session,
-                user,
-                error=f"Add another owner or delete {project.name} before deleting your account",
-                status_code=status.HTTP_409_CONFLICT,
-            )
-    for row in session.exec(select(ApiToken).where(ApiToken.user_id == user.id)).all():
-        session.delete(row)
-    # Leaving every project: like remove_project_member, nothing stays assigned to them.
-    session.exec(update(Ticket).where(Ticket.assignee_id == user.id).values(assignee_id=None))
-    for row in session.exec(select(ProjectMember).where(ProjectMember.user_id == user.id)).all():
-        session.delete(row)
-    for row in session.exec(
-        select(GitHubConnectState).where(GitHubConnectState.user_id == user.id)
-    ).all():
-        session.delete(row)
-    user.name = "Deleted user"
-    user.email = f"deleted-{user.id}@deleted.invalid"
-    user.password_hash = "!"
-    user.deleted_at = utcnow()
-    session.add(user)
-    session.commit()
+    try:
+        delete_account(session, user, current_password=current_password)
+    except HTTPException as exc:
+        return _settings_error(request, session, user, exc)
     response = RedirectResponse("/login", status_code=status.HTTP_303_SEE_OTHER)
     response.delete_cookie(SESSION_COOKIE, path="/")
     return response
