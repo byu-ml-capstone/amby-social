@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
@@ -425,6 +425,7 @@ def advance_tickets_for_pull_request(
     artifact: GitHubArtifact,
     action: str,
     texts: Iterable[str | None],
+    tasks: BackgroundTasks | None = None,
 ) -> None:
     """Move the tickets a PR mentions: start work on open, finish on merge.
 
@@ -441,9 +442,10 @@ def advance_tickets_for_pull_request(
         target, movable = TicketStatus.DONE, set(TicketStatus) - {TicketStatus.DONE}
     else:
         return
+    project = session.get(Project, connection.project_id)
     for ticket in _matching_tickets(session, connection, texts):
         if ticket.status in movable:
-            set_status(session, ticket, target, commit=False)
+            set_status(session, ticket, target, project=project, tasks=tasks, commit=False)
 
 
 def sync_open_pull_requests(
@@ -626,6 +628,7 @@ def dispatch_github_event(
     event_type: str,
     payload: dict,
     github: GitHubClient,
+    tasks: BackgroundTasks | None = None,
 ) -> None:
     action = payload.get("action")
     if action is not None and not isinstance(action, str):
@@ -641,7 +644,7 @@ def dispatch_github_event(
             artifact = upsert_pull_request(session, connection, pull)
             texts = [pull.get("title"), pull.get("body"), head_ref]
             reconcile_pull_request_links(session, connection, artifact, texts)
-            advance_tickets_for_pull_request(session, connection, artifact, action, texts)
+            advance_tickets_for_pull_request(session, connection, artifact, action, texts, tasks)
         return
     if event_type == "pull_request_review" and action in _REVIEW_ACTIONS:
         number = _pull_number(payload)
@@ -782,6 +785,7 @@ def process_github_delivery(
     event_type: str,
     payload: dict,
     github: GitHubClient,
+    tasks: BackgroundTasks | None = None,
 ) -> bool:
     delivery = IntegrationDelivery(
         provider="GITHUB",
@@ -793,7 +797,7 @@ def process_github_delivery(
         if not claim_github_delivery(session, delivery):
             session.rollback()
             return False
-        dispatch_github_event(session, event_type, payload, github)
+        dispatch_github_event(session, event_type, payload, github, tasks)
         session.commit()
     except Exception:
         session.rollback()

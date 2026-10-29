@@ -961,11 +961,13 @@ def set_status(
     if resolution_notes is not None:
         ticket.resolution_notes = resolution_notes
     session.add(ticket)
-    if not commit:
+    if commit:
+        session.commit()
+        session.refresh(ticket)
+    else:
         session.flush()
-        return ticket
-    session.commit()
-    session.refresh(ticket)
+    # With commit=False the caller's background tasks run after its response, i.e. after it
+    # commits; a failed commit fails the request and they never run.
     if entered_done and project is not None:
         schedule(tasks, session, project, EVENT_TICKET_DONE, ticket)
     return ticket
