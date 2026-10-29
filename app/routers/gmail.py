@@ -26,7 +26,7 @@ from app.models import (
     TicketType,
     User,
 )
-from app.routers.web_sprints import _settings
+from app.routers.web_settings import _settings
 
 router = APIRouter(tags=["web"])
 _LABEL_IDS_FORM = Form(default=[])
