@@ -171,3 +171,12 @@ def test_login_is_case_insensitive_on_email(client):
         "/api/v1/auth/login", json={"email": "ADA@Example.com", "password": "hunter22"}
     )
     assert response.status_code == 200
+
+
+@pytest.mark.parametrize("password", ["short", "é" * 37])
+def test_register_user_enforces_the_password_policy_without_the_schema(session, password):
+    from app.services import register_user
+
+    with pytest.raises(HTTPException) as raised:
+        register_user(session, name="Ada", email="ada@example.com", password=password)
+    assert raised.value.status_code == 422

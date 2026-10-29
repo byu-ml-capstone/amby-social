@@ -12,14 +12,15 @@ import threading
 from collections.abc import Iterable
 from pathlib import Path
 
-from fastapi import HTTPException, status
 from fastapi.responses import FileResponse
 from PIL import Image, ImageOps
 from sqlalchemy import func
 from sqlmodel import Session, select
 
 from app.config import settings
-from app.models import AttachmentSource, Ticket, TicketAttachment
+from app.db import begin_write
+from app.errors import Forbidden, NotFound, TooLarge
+from app.models import AttachmentSource, Role, Ticket, TicketAttachment, User
 
 ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 PROJECT_QUOTA_BYTES = 1024 * 1024 * 1024
@@ -28,6 +29,7 @@ IMAGE_MAX_EDGE = 2000
 # time: uploads and the Gmail poller share this process.
 IMAGE_MAX_PIXELS = 25_000_000
 _DECODE_LOCK = threading.Lock()
+_QUOTA_FULL = "This project's 1 GB of attachment storage is full"
 FILENAME_MAX_LENGTH = 255
 CONTENT_TYPE_MAX_LENGTH = 100
 OCTET_STREAM = "application/octet-stream"
@@ -157,14 +159,13 @@ def attach_uploads(
     uploader_id: str,
     files: Iterable[tuple[str | None, str | None, bytes]],
 ) -> list[TicketAttachment]:
-    """Stage every upload or none. The caller commits; on 413 nothing is left on disk."""
+    """Store every upload or none; on any failure nothing is left on disk."""
     rows: list[TicketAttachment] = []
     used = project_usage(session, ticket.project_id)
     try:
         for filename, declared_type, data in files:
             if len(data) > ATTACHMENT_MAX_BYTES:
-                raise HTTPException(
-                    status.HTTP_413_CONTENT_TOO_LARGE,
+                raise TooLarge(
                     f"{clean_filename(filename)} is larger than 10 MB",
                 )
             row = store(
@@ -178,22 +179,44 @@ def attach_uploads(
             rows.append(row)
             used += row.size_bytes
             if used > PROJECT_QUOTA_BYTES:
-                raise HTTPException(
-                    status.HTTP_413_CONTENT_TOO_LARGE,
-                    "This project's 1 GB of attachment storage is full",
-                )
+                raise TooLarge(_QUOTA_FULL)
             row.ticket_id = ticket.id
             session.add(row)
+        # `used` was read before the files were processed; recount under the write lock so
+        # two uploads at once can't both take the last of the quota.
+        begin_write(session)
+        if project_usage(session, ticket.project_id) > PROJECT_QUOTA_BYTES:
+            raise TooLarge(_QUOTA_FULL)
+        session.commit()
     except BaseException:
+        session.rollback()
         discard(rows)
         raise
     return rows
 
 
+def can_delete(row: TicketAttachment, user: User, role: Role) -> bool:
+    return row.uploaded_by == user.id or role == Role.OWNER
+
+
+def delete_attachment(
+    session: Session, ticket: Ticket, attachment_id: str, user: User, role: Role
+) -> None:
+    """The uploader or an owner removes one attachment: its row, then its file."""
+    row = session.get(TicketAttachment, attachment_id)
+    if row is None or row.ticket_id != ticket.id:
+        raise NotFound("Attachment not found")
+    if not can_delete(row, user, role):
+        raise Forbidden("Cannot delete this attachment")
+    session.delete(row)
+    session.commit()
+    delete(row.project_id, attachment_id)  # after commit: a failure leaves an orphan file only
+
+
 def file_response(row: TicketAttachment) -> FileResponse:
     target = path(row.project_id, row.id)
     if not target.is_file():
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
+        raise NotFound("Attachment not found")
     response = FileResponse(
         target,
         media_type=row.content_type if row.is_image else OCTET_STREAM,

@@ -3,8 +3,9 @@ from sqlmodel import Session, select
 
 from app.auth import current_user, issue_api_token
 from app.db import get_session
-from app.models import ApiToken, User, utcnow
+from app.models import ApiToken, User
 from app.schemas import TokenCreate, TokenIssued, TokenOut
+from app.services import revoke_api_token
 
 router = APIRouter(prefix="/api/v1/tokens", tags=["tokens"])
 
@@ -40,10 +41,4 @@ def create_token(
 def revoke_token(
     token_id: str, user: User = Depends(current_user), session: Session = Depends(get_session)
 ) -> None:
-    token = session.exec(
-        select(ApiToken).where(ApiToken.id == token_id, ApiToken.user_id == user.id)
-    ).first()
-    if token is not None and token.revoked_at is None:
-        token.revoked_at = utcnow()
-        session.add(token)
-        session.commit()
+    revoke_api_token(session, user, token_id)

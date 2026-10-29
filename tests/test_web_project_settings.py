@@ -7,7 +7,8 @@ import pytest
 from fastapi import HTTPException, Response
 from sqlmodel import Session, select
 
-import app.routers.web_sprints as web_sprints
+import app.routers.web_github as web_github
+import app.routers.web_settings as web_settings
 from app.auth import make_csrf_token
 from app.config import settings
 from app.github import AvailableRepository, issue_github_state, read_github_state
@@ -60,7 +61,7 @@ def _use_github_transport(monkeypatch, handler):
     transport = httpx.Client(transport=httpx.MockTransport(handler))
     monkeypatch.setattr(RealGitHubClient, "_app_token", lambda self: "test-app-jwt")
     monkeypatch.setattr(
-        web_sprints,
+        web_github,
         "GitHubClient",
         lambda: RealGitHubClient(settings, transport),
         raising=False,
@@ -674,7 +675,7 @@ def test_selection_commits_before_independent_repository_sync(
             )
         )
 
-    monkeypatch.setattr(web_sprints, "sync_open_pull_requests", fake_sync, raising=False)
+    monkeypatch.setattr(web_github, "sync_open_pull_requests", fake_sync, raising=False)
     login_as(settings_world.owner.email)
     response = client.post(
         f"/projects/{settings_world.project.slug}/settings/integrations/github/repositories",
@@ -698,7 +699,7 @@ def test_selection_does_not_swallow_internal_sync_errors(
     def explode(session, connection, github):
         raise RuntimeError("sync invariant failed")
 
-    monkeypatch.setattr(web_sprints, "sync_open_pull_requests", explode, raising=False)
+    monkeypatch.setattr(web_github, "sync_open_pull_requests", explode, raising=False)
     login_as(settings_world.owner.email)
     with pytest.raises(RuntimeError, match="sync invariant failed"):
         client.post(
@@ -907,7 +908,7 @@ def test_retry_sync_requires_owner_and_csrf(
     client, settings_world, login_as, connected_github, monkeypatch
 ):
     monkeypatch.setattr(
-        web_sprints,
+        web_github,
         "sync_open_pull_requests",
         lambda session, connection, github: 0,
         raising=False,
@@ -966,7 +967,7 @@ def test_retry_syncs_active_repositories_independently_without_reactivating_inac
         if connection.github_repository_id == 501:
             raise httpx.ConnectError("repository unavailable")
 
-    monkeypatch.setattr(web_sprints, "sync_open_pull_requests", fake_sync, raising=False)
+    monkeypatch.setattr(web_github, "sync_open_pull_requests", fake_sync, raising=False)
     login_as(settings_world.owner.email)
     response = client.post(
         f"/projects/{settings_world.project.slug}/settings/integrations/github/sync",
@@ -1075,7 +1076,7 @@ def test_settings_template_context_contains_only_chat_provider_status(
         captured.update(context)
         return Response()
 
-    monkeypatch.setattr(web_sprints, "render", capture_render)
+    monkeypatch.setattr(web_settings, "render", capture_render)
     login_as(settings_world.owner.email)
 
     response = client.get(f"/projects/{settings_world.project.slug}/settings")

@@ -2,7 +2,7 @@ import hashlib
 import hmac
 import json
 
-from fastapi import APIRouter, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, Response, status
 from sqlmodel import Session
 
 from app.config import settings
@@ -24,7 +24,7 @@ def valid_webhook_signature(body: bytes, header: str | None, secret: str) -> boo
 
 
 @router.post("/integrations/github/webhook")
-async def github_webhook(request: Request) -> Response:
+async def github_webhook(request: Request, tasks: BackgroundTasks) -> Response:
     raw = await request.body()
     secret = settings.github_webhook_secret
     if not secret:
@@ -56,5 +56,5 @@ async def github_webhook(request: Request) -> Response:
             "Invalid GitHub webhook metadata",
         )
     with Session(get_engine()) as session, GitHubClient() as github:
-        process_github_delivery(session, delivery_id, event_type, payload, github)
+        process_github_delivery(session, delivery_id, event_type, payload, github, tasks)
     return Response(status_code=status.HTTP_200_OK)

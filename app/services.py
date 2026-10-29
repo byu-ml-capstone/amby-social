@@ -7,15 +7,18 @@ from datetime import date, timedelta
 from string import Formatter
 from urllib.parse import urlparse
 
-from fastapi import BackgroundTasks, HTTPException, status
+from fastapi import BackgroundTasks
 from sqlalchemy import delete, text, update
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlmodel import Session, select
 
 from app import attachments
-from app.auth import hash_password
+from app.auth import hash_password, verify_password
 from app.config import settings
+from app.db import begin_write
+from app.errors import Conflict, DomainError, Invalid, NotFound
 from app.models import (
+    ApiToken,
     GitHubArtifact,
     GitHubConnectState,
     GitHubInstallation,
@@ -61,6 +64,8 @@ NULLABLE_TICKET_FIELDS = {
 }
 NAME_MAX_LENGTH = 100
 USER_NAME_MAX_LENGTH = 50
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_BYTES = 72  # bcrypt rejects longer input
 _EMAIL_TAKEN = "Email already registered"
 _PLANNING_SPRINT_EXISTS = "A planning sprint already exists"
 _ACTIVE_SPRINT_EXISTS = "An active sprint already exists"
@@ -92,21 +97,37 @@ def allocate_project_key(session: Session, name: str) -> str:
         suffix += 1
 
 
+def _clean_user_name(name: str) -> str:
+    clean_name = name.strip()
+    if not clean_name:
+        raise Invalid("name must not be blank")
+    if len(clean_name) > USER_NAME_MAX_LENGTH:
+        raise Invalid(
+            f"name must be at most {USER_NAME_MAX_LENGTH} characters",
+        )
+    return clean_name
+
+
+def validate_password(password: str) -> None:
+    if len(password) < PASSWORD_MIN_LENGTH:
+        raise Invalid(
+            f"Password must be at least {PASSWORD_MIN_LENGTH} characters",
+        )
+    if len(password.encode("utf-8")) > PASSWORD_MAX_BYTES:
+        raise Invalid(
+            f"Password must be at most {PASSWORD_MAX_BYTES} bytes",
+        )
+
+
 def register_user(session: Session, *, name: str, email: str, password: str) -> User:
     # Both registration routes use this service because the HTML form has no
     # Pydantic model in front of it. Keep the database-facing validation and
     # duplicate-email race handling in one place.
-    clean_name = name.strip()
-    if not clean_name:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "name must not be blank")
-    if len(clean_name) > USER_NAME_MAX_LENGTH:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            f"name must be at most {USER_NAME_MAX_LENGTH} characters",
-        )
+    clean_name = _clean_user_name(name)
+    validate_password(password)
     normalized_email = email.lower()
     if session.exec(select(User).where(User.email == normalized_email)).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, _EMAIL_TAKEN)
+        raise Conflict(_EMAIL_TAKEN)
     user = User(
         name=clean_name,
         email=normalized_email,
@@ -118,9 +139,83 @@ def register_user(session: Session, *, name: str, email: str, password: str) -> 
     except IntegrityError:
         # The unique constraint resolves a concurrent check-then-insert race.
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, _EMAIL_TAKEN) from None
+        raise Conflict(_EMAIL_TAKEN) from None
     session.refresh(user)
     return user
+
+
+def update_user_profile(session: Session, user: User, *, name: str, email: str) -> User:
+    clean_name = _clean_user_name(name)
+    normalized_email = email.lower()
+    taken = session.exec(
+        select(User).where(User.email == normalized_email, User.id != user.id)
+    ).first()
+    if taken is not None:
+        raise Conflict(_EMAIL_TAKEN)
+    user.name = clean_name
+    user.email = normalized_email
+    session.add(user)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise Conflict(_EMAIL_TAKEN) from None
+    return user
+
+
+def _require_current_password(user: User, current_password: str) -> None:
+    if not verify_password(current_password, user.password_hash):
+        raise Invalid("Current password is incorrect")
+
+
+def change_user_password(
+    session: Session, user: User, *, current_password: str, new_password: str
+) -> None:
+    _require_current_password(user, current_password)
+    validate_password(new_password)
+    user.password_hash = hash_password(new_password)
+    session.add(user)
+    session.commit()
+
+
+def revoke_api_token(session: Session, user: User, token_id: str) -> None:
+    """Revoke one of the user's own tokens; unknown or already revoked ids are a no-op."""
+    token = session.exec(
+        select(ApiToken).where(ApiToken.id == token_id, ApiToken.user_id == user.id)
+    ).first()
+    if token is not None and token.revoked_at is None:
+        token.revoked_at = utcnow()
+        session.add(token)
+        session.commit()
+
+
+def delete_account(session: Session, user: User, *, current_password: str) -> None:
+    """Anonymize the user and remove their access; refused while they are a sole owner."""
+    _require_current_password(user, current_password)
+    begin_write(session)  # the sole-owner check and the deletes must see the same owners
+    owned_memberships = session.exec(
+        select(ProjectMember).where(
+            ProjectMember.user_id == user.id, ProjectMember.role == Role.OWNER
+        )
+    ).all()
+    # ponytail: one lookup per owned project; use NOT EXISTS if ownership counts grow.
+    for membership in owned_memberships:
+        if _owner_count(session, membership.project_id) == 1:
+            project = session.get(Project, membership.project_id)
+            raise Conflict(
+                f"Add another owner or delete {project.name} before deleting your account",
+            )
+    session.execute(delete(ApiToken).where(ApiToken.user_id == user.id))
+    # Leaving every project: like remove_project_member, nothing stays assigned to them.
+    session.exec(update(Ticket).where(Ticket.assignee_id == user.id).values(assignee_id=None))
+    session.execute(delete(ProjectMember).where(ProjectMember.user_id == user.id))
+    session.execute(delete(GitHubConnectState).where(GitHubConnectState.user_id == user.id))
+    user.name = "Deleted user"
+    user.email = f"deleted-{user.id}@deleted.invalid"
+    user.password_hash = "!"
+    user.deleted_at = utcnow()
+    session.add(user)
+    session.commit()
 
 
 def create_project(session: Session, name: str, start_date: date, user: User) -> Project:
@@ -133,17 +228,16 @@ def create_project(session: Session, name: str, start_date: date, user: User) ->
     # both callers get it.
     clean_name = name.strip()
     if not clean_name:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "name must not be blank")
+        raise Invalid("name must not be blank")
     if len(clean_name) > NAME_MAX_LENGTH:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             f"name must be at most {NAME_MAX_LENGTH} characters",
         )
     slug = slugify(clean_name)
     if not slug:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Name yields an empty slug")
+        raise Invalid("Name yields an empty slug")
     if session.exec(select(Project).where(Project.slug == slug)).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, _slug_conflict_detail(slug))
+        raise Conflict(_slug_conflict_detail(slug))
     key = allocate_project_key(session, clean_name)
     while True:
         project = Project(name=clean_name, slug=slug, key=key, start_date=start_date)
@@ -161,7 +255,7 @@ def create_project(session: Session, name: str, start_date: date, user: User) ->
             # Two concurrent project creations that derive the same slug can both
             # pass the pre-check above; the unique constraint on Project.slug
             # catches the loser here (Ruling R16).
-            raise HTTPException(status.HTTP_409_CONFLICT, _slug_conflict_detail(slug)) from None
+            raise Conflict(_slug_conflict_detail(slug)) from None
         except Exception:
             session.rollback()
             raise
@@ -173,10 +267,9 @@ def update_project(session: Session, project: Project, **changes) -> Project:
     if "name" in changes:
         name = changes["name"]
         if name is None or not name.strip():
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "name must not be blank")
+            raise Invalid("name must not be blank")
         if len(name.strip()) > NAME_MAX_LENGTH:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
+            raise Invalid(
                 f"name must be at most {NAME_MAX_LENGTH} characters",
             )
     for field, value in changes.items():
@@ -189,13 +282,11 @@ def update_project(session: Session, project: Project, **changes) -> Project:
 
 def validate_webhook_url(url: str) -> None:
     if len(url) > 500:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             "webhook URL must be at most 500 characters",
         )
     if any(char == "\\" or char.isspace() or ord(char) <= 31 or ord(char) == 127 for char in url):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             "webhook URL must be a safe https URL",
         )
     try:
@@ -205,8 +296,7 @@ def validate_webhook_url(url: str) -> None:
     except ValueError:
         valid = False
     if not valid:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             "webhook URL must be a safe https URL",
         )
     addresses = []
@@ -232,8 +322,7 @@ def validate_webhook_url(url: str) -> None:
         or address.is_unspecified
         for address in addresses
     ):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             "webhook URL must be a safe https URL",
         )
     hostname = parsed.hostname.lower().rstrip(".")
@@ -241,8 +330,7 @@ def validate_webhook_url(url: str) -> None:
         hostname == allowed or hostname.endswith(f".{allowed}")
         for allowed in settings.webhook_allowed_hosts
     ):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             "webhook URL must use an approved webhook host",
         )
 
@@ -259,7 +347,7 @@ def set_chat_webhook(
     session: Session, project: Project, provider: WebhookType, url: str
 ) -> ProjectChatWebhook:
     if provider not in (WebhookType.SLACK, WebhookType.TEAMS, WebhookType.DISCORD):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid chat provider")
+        raise Invalid("invalid chat provider")
     validate_webhook_url(url)
     webhook = session.exec(
         select(ProjectChatWebhook).where(
@@ -312,21 +400,21 @@ def _owner_count(session: Session, project_id: str) -> int:
 def add_project_member(session: Session, project: Project, email: str, role: Role) -> ProjectMember:
     target = session.exec(select(User).where(User.email == email.lower())).first()
     if target is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "No registered user with that email")
+        raise NotFound("No registered user with that email")
     existing = session.exec(
         select(ProjectMember).where(
             ProjectMember.project_id == project.id, ProjectMember.user_id == target.id
         )
     ).first()
     if existing:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Already a member")
+        raise Conflict("Already a member")
     member = ProjectMember(project_id=project.id, user_id=target.id, role=role)
     session.add(member)
     try:
         session.commit()
     except IntegrityError:
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, "Already a member") from None
+        raise Conflict("Already a member") from None
     session.refresh(member)
     return member
 
@@ -334,15 +422,16 @@ def add_project_member(session: Session, project: Project, email: str, role: Rol
 def update_project_member(
     session: Session, project: Project, user_id: str, role: Role
 ) -> ProjectMember:
+    begin_write(session)  # owner count and the write must see the same owners
     member = session.exec(
         select(ProjectMember).where(
             ProjectMember.project_id == project.id, ProjectMember.user_id == user_id
         )
     ).first()
     if member is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not a member")
+        raise NotFound("Not a member")
     if member.role == Role.OWNER and role != Role.OWNER and _owner_count(session, project.id) == 1:
-        raise HTTPException(status.HTTP_409_CONFLICT, "A project must keep at least one OWNER")
+        raise Conflict("A project must keep at least one OWNER")
     member.role = role
     session.add(member)
     session.commit()
@@ -351,15 +440,16 @@ def update_project_member(
 
 
 def remove_project_member(session: Session, project: Project, user_id: str) -> None:
+    begin_write(session)  # owner count and the write must see the same owners
     member = session.exec(
         select(ProjectMember).where(
             ProjectMember.project_id == project.id, ProjectMember.user_id == user_id
         )
     ).first()
     if member is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Not a member")
+        raise NotFound("Not a member")
     if member.role == Role.OWNER and _owner_count(session, project.id) == 1:
-        raise HTTPException(status.HTTP_409_CONFLICT, "A project must keep at least one OWNER")
+        raise Conflict("A project must keep at least one OWNER")
     for ticket in session.exec(
         select(Ticket).where(Ticket.project_id == project.id, Ticket.assignee_id == user_id)
     ).all():
@@ -373,7 +463,7 @@ def delete_ticket_record(session: Session, ticket: Ticket) -> None:
     if session.exec(
         select(SprintTicketHistory).where(SprintTicketHistory.ticket_id == ticket.id)
     ).first():
-        raise HTTPException(status.HTTP_409_CONFLICT, "Ticket belongs to closed sprint history")
+        raise Conflict("Ticket belongs to closed sprint history")
     project_id = ticket.project_id
     attachment_ids = session.exec(
         select(TicketAttachment.id).where(TicketAttachment.ticket_id == ticket.id)
@@ -389,7 +479,7 @@ def delete_ticket_record(session: Session, ticket: Ticket) -> None:
 
 def delete_project(session: Session, project: Project, confirm: str) -> None:
     if confirm != project.slug:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "confirm must equal the slug")
+        raise Invalid("confirm must equal the slug")
     project_id = project.id
     repository_ids = select(ProjectGitHubRepository.id).where(
         ProjectGitHubRepository.project_id == project.id
@@ -461,12 +551,9 @@ def _format_sprint_name(number: int) -> str:
             raise ValueError
         name = settings.sprint_name_pattern.format(number=number).strip()
     except (IndexError, KeyError, ValueError) as exc:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "Invalid sprint name pattern"
-        ) from exc
+        raise Invalid("Invalid sprint name pattern") from exc
     if not name or len(name) > 100:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             "Generated sprint name must be between 1 and 100 characters",
         )
     return name
@@ -492,7 +579,7 @@ def _claim_project(session: Session, project_id: str):
 
 def create_sprints(session: Session, project: Project, count: int = 1) -> list[Sprint]:
     if not 1 <= count <= 5:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "count must be between 1 and 5")
+        raise Invalid("count must be between 1 and 5")
     try:
         _claim_project(session, project.id)
         existing = session.exec(
@@ -509,12 +596,12 @@ def create_sprints(session: Session, project: Project, count: int = 1) -> list[S
         ]
         session.add_all(created)
         session.commit()
-    except HTTPException:
+    except DomainError:
         session.rollback()
         raise
     except (IntegrityError, OperationalError):
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, _SPRINT_UPDATE_CONFLICT) from None
+        raise Conflict(_SPRINT_UPDATE_CONFLICT) from None
     except Exception:
         session.rollback()
         raise
@@ -525,13 +612,12 @@ def create_sprints(session: Session, project: Project, count: int = 1) -> list[S
 
 def update_sprint(session: Session, sprint: Sprint, **changes) -> Sprint:
     if sprint.status is not SprintStatus.PLANNING:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Sprint must be planning")
+        raise Conflict("Sprint must be planning")
     if set(changes) - {"goal"} or changes.get("goal") is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Only goal may be changed")
+        raise Invalid("Only goal may be changed")
     goal = changes["goal"].strip()
     if len(goal) > 2000:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             "goal must be at most 2000 characters",
         )
     sprint.goal = goal
@@ -546,24 +632,22 @@ def start_sprint(session: Session, sprint: Sprint) -> Sprint:
         _claim_project(session, sprint.project_id)
         sprint = session.get(Sprint, sprint.id, populate_existing=True)
         if sprint is None or sprint.status is not SprintStatus.PLANNING:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Sprint must be planning")
+            raise Conflict("Sprint must be planning")
         if not sprint.goal.strip():
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Sprint goal is required")
+            raise Invalid("Sprint goal is required")
         earliest = session.exec(
             select(Sprint)
             .where(Sprint.project_id == sprint.project_id, Sprint.status == SprintStatus.PLANNING)
             .order_by(*sprint_chronology())
         ).first()
         if earliest is None or earliest.id != sprint.id:
-            raise HTTPException(
-                status.HTTP_409_CONFLICT, "Only the earliest planning sprint may start"
-            )
+            raise Conflict("Only the earliest planning sprint may start")
         if session.exec(
             select(Sprint).where(
                 Sprint.project_id == sprint.project_id, Sprint.status == SprintStatus.ACTIVE
             )
         ).first():
-            raise HTTPException(status.HTTP_409_CONFLICT, _ACTIVE_SPRINT_EXISTS)
+            raise Conflict(_ACTIVE_SPRINT_EXISTS)
         sprint.committed_points = sum(
             points or 0
             for points in session.exec(
@@ -573,12 +657,12 @@ def start_sprint(session: Session, sprint: Sprint) -> Sprint:
         sprint.status = SprintStatus.ACTIVE
         session.add(sprint)
         session.commit()
-    except HTTPException:
+    except DomainError:
         session.rollback()
         raise
     except (IntegrityError, OperationalError):
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, _ACTIVE_SPRINT_EXISTS) from None
+        raise Conflict(_ACTIVE_SPRINT_EXISTS) from None
     session.refresh(sprint)
     return sprint
 
@@ -594,7 +678,7 @@ def close_sprint(
         _claim_project(session, sprint.project_id)
         sprint = session.get(Sprint, sprint.id, populate_existing=True)
         if sprint is None or sprint.status is not SprintStatus.ACTIVE:
-            raise HTTPException(status.HTTP_409_CONFLICT, "Sprint must be active")
+            raise Conflict("Sprint must be active")
         project = session.get(Project, sprint.project_id)
         next_sprint = session.exec(
             select(Sprint)
@@ -620,7 +704,7 @@ def close_sprint(
             session.flush()
 
         if review_notes is not None and len(review_notes) > 4000:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "review_notes is too long")
+            raise Invalid("review_notes is too long")
         claim = session.exec(
             update(Sprint)
             .where(Sprint.id == sprint.id, Sprint.status == SprintStatus.ACTIVE)
@@ -628,7 +712,7 @@ def close_sprint(
         )
         if claim.rowcount != 1:
             session.rollback()
-            raise HTTPException(status.HTTP_409_CONFLICT, "Sprint must be active")
+            raise Conflict("Sprint must be active")
 
         tickets = session.exec(select(Ticket).where(Ticket.sprint_id == sprint.id)).all()
         completed_points = 0
@@ -662,16 +746,16 @@ def close_sprint(
         sprint.goal_achieved = goal_achieved
         sprint.review_notes = review_notes.strip() if review_notes else None
         session.commit()
-    except HTTPException:
+    except DomainError:
         session.rollback()
         raise
     except IntegrityError:
         session.rollback()
-        raise HTTPException(status.HTTP_409_CONFLICT, _SPRINT_CLOSE_CONFLICT) from None
+        raise Conflict(_SPRINT_CLOSE_CONFLICT) from None
     except OperationalError as exc:
         session.rollback()
         if str(exc.orig).lower().startswith(_SQLITE_LOCK_MESSAGES):
-            raise HTTPException(status.HTTP_409_CONFLICT, _SPRINT_CLOSE_CONFLICT) from None
+            raise Conflict(_SPRINT_CLOSE_CONFLICT) from None
         raise
     except Exception:
         session.rollback()
@@ -690,14 +774,13 @@ def _depth(value, level: int = 1) -> int:
 
 def validate_meta(meta) -> None:
     if not isinstance(meta, dict):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "meta must be a JSON object")
+        raise Invalid("meta must be a JSON object")
     if _depth(meta) > META_MAX_DEPTH:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             f"meta may not nest deeper than {META_MAX_DEPTH} levels",
         )
     if len(json.dumps(meta).encode("utf-8")) > META_MAX_BYTES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "meta exceeds 8 KB")
+        raise Invalid("meta exceeds 8 KB")
 
 
 def validate_assignee(session: Session, project: Project, assignee_id: str | None) -> None:
@@ -710,9 +793,7 @@ def validate_assignee(session: Session, project: Project, assignee_id: str | Non
         )
     ).first()
     if member is None:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "assignee must be a project member"
-        )
+        raise Invalid("assignee must be a project member")
 
 
 def validate_sprint_assignment(
@@ -722,13 +803,64 @@ def validate_sprint_assignment(
         return None
     sprint = session.get(Sprint, sprint_id)
     if sprint is None or sprint.project_id != project.id:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "sprint must belong to this project"
-        )
+        raise Invalid("sprint must belong to this project")
     if sprint.status not in (SprintStatus.PLANNING, SprintStatus.ACTIVE):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "sprint must be planning or active"
+        raise Invalid("sprint must be planning or active")
+    return sprint
+
+
+def reorder_backlog_ticket(
+    session: Session, project: Project, ticket_id: str, direction: str
+) -> None:
+    """Swap a backlog ticket's rank with its neighbour above ("up") or below ("down")."""
+    begin_write(session)  # two moves at once must swap ranks from the same order
+    tickets = session.exec(
+        select(Ticket)
+        .where(Ticket.project_id == project.id, Ticket.sprint_id.is_(None))
+        .order_by(Ticket.backlog_rank.desc())
+    ).all()
+    index = next((i for i, ticket in enumerate(tickets) if ticket.id == ticket_id), None)
+    offset = -1 if direction == "up" else 1 if direction == "down" else 0
+    if index is None or not offset or not 0 <= index + offset < len(tickets):
+        raise Invalid("Cannot move ticket")
+    other = tickets[index + offset]
+    tickets[index].backlog_rank, other.backlog_rank = (
+        other.backlog_rank,
+        tickets[index].backlog_rank,
+    )
+    session.add_all((tickets[index], other))
+    session.commit()
+
+
+def plan_backlog_tickets(
+    session: Session, project: Project, sprint_id: str, ticket_ids: list[str]
+) -> Sprint:
+    """Move backlog tickets (no sprint yet) into the project's planning sprint, all or none."""
+    sprint = session.exec(
+        select(Sprint).where(
+            Sprint.id == sprint_id,
+            Sprint.project_id == project.id,
+            Sprint.status == SprintStatus.PLANNING,
         )
+    ).first()
+    if sprint is None:
+        raise NotFound("Sprint not found")
+    tickets = session.exec(
+        select(Ticket).where(
+            Ticket.project_id == project.id,
+            Ticket.sprint_id.is_(None),
+            Ticket.id.in_(ticket_ids),
+        )
+    ).all()
+    if len(tickets) != len(set(ticket_ids)):
+        raise NotFound("Ticket not found")
+    try:
+        for ticket in tickets:
+            update_ticket(session, ticket, project, sprint_id=sprint.id, commit=False)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
     return sprint
 
 
@@ -768,20 +900,17 @@ def create_ticket(
 ) -> Ticket:
     clean_title = title.strip()
     if not clean_title:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "title must not be empty")
+        raise Invalid("title must not be empty")
     if len(clean_title) > TITLE_MAX_LENGTH:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             f"title must be at most {TITLE_MAX_LENGTH} characters",
         )
     if len(description) > DESCRIPTION_MAX_LENGTH:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             f"description must be at most {DESCRIPTION_MAX_LENGTH} characters",
         )
     if story_points is not None and story_points not in VALID_STORY_POINTS:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             "story_points must be one of 1, 2, 3, 5, 8, 13",
         )
     if meta is None:
@@ -832,17 +961,13 @@ def create_subtask(
 ) -> Subtask:
     clean_title = title.strip()
     if not clean_title:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "subtask title must not be empty"
-        )
+        raise Invalid("subtask title must not be empty")
     if len(clean_title) > TITLE_MAX_LENGTH:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             f"subtask title must be at most {TITLE_MAX_LENGTH} characters",
         )
     if len(description) > SUBTASK_DESCRIPTION_MAX_LENGTH:
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
+        raise Invalid(
             f"subtask description must be at most {SUBTASK_DESCRIPTION_MAX_LENGTH} characters",
         )
     if position is None:
@@ -877,19 +1002,15 @@ def update_subtask(
     if title is not None:
         clean_title = title.strip()
         if not clean_title:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT, "subtask title must not be empty"
-            )
+            raise Invalid("subtask title must not be empty")
         if len(clean_title) > TITLE_MAX_LENGTH:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
+            raise Invalid(
                 f"subtask title must be at most {TITLE_MAX_LENGTH} characters",
             )
         subtask.title = clean_title
     if description is not None:
         if len(description) > SUBTASK_DESCRIPTION_MAX_LENGTH:
-            raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
+            raise Invalid(
                 f"subtask description must be at most {SUBTASK_DESCRIPTION_MAX_LENGTH} characters",
             )
         subtask.description = description
@@ -902,12 +1023,20 @@ def update_subtask(
     return subtask
 
 
+def delete_subtask_record(session: Session, ticket: Ticket, subtask_id: str) -> None:
+    subtask = session.get(Subtask, subtask_id)
+    if subtask is None or subtask.ticket_id != ticket.id:
+        raise NotFound("Subtask not found")
+    session.delete(subtask)
+    session.commit()
+
+
 def update_ticket(
     session: Session, ticket: Ticket, project: Project, *, commit: bool = True, **changes
 ) -> Ticket:
     for field, value in changes.items():
         if value is None and field not in NULLABLE_TICKET_FIELDS:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"{field} may not be null")
+            raise Invalid(f"{field} may not be null")
     if "meta" in changes and changes["meta"] is not None:
         validate_meta(changes["meta"])
     if "assignee_id" in changes:
@@ -917,7 +1046,7 @@ def update_ticket(
     if "title" in changes and changes["title"] is not None:
         changes["title"] = changes["title"].strip()
         if not changes["title"]:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "title must not be empty")
+            raise Invalid("title must not be empty")
     if changes.get("sprint_id") is not None and ticket.first_sprint_entered_at is None:
         ticket.first_sprint_entered_at = utcnow()
     for field, value in changes.items():
@@ -958,11 +1087,13 @@ def set_status(
     if resolution_notes is not None:
         ticket.resolution_notes = resolution_notes
     session.add(ticket)
-    if not commit:
+    if commit:
+        session.commit()
+        session.refresh(ticket)
+    else:
         session.flush()
-        return ticket
-    session.commit()
-    session.refresh(ticket)
+    # With commit=False the caller's background tasks run after its response, i.e. after it
+    # commits; a failed commit fails the request and they never run.
     if entered_done and project is not None:
         schedule(tasks, session, project, EVENT_TICKET_DONE, ticket)
     return ticket

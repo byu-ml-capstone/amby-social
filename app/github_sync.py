@@ -6,11 +6,13 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import Settings, settings
+from app.db import begin_write
+from app.errors import Conflict
 from app.github import AvailableRepository, GitHubClient
 from app.models import (
     GitHubArtifact,
@@ -26,6 +28,7 @@ from app.models import (
     Ticket,
     TicketGitLink,
     TicketStatus,
+    User,
     utcnow,
 )
 from app.services import set_status, slugify
@@ -98,6 +101,32 @@ def ticket_development(session: Session, ticket: Ticket) -> list[TicketDevelopme
     return development
 
 
+def save_installation(
+    session: Session, installation_id: int, *, account_id: int, account_login: str, user: User
+) -> GitHubInstallation:
+    """Record a verified GitHub App installation and who connected it."""
+    installation = session.exec(
+        select(GitHubInstallation).where(
+            GitHubInstallation.github_installation_id == installation_id
+        )
+    ).first()
+    if installation is None:
+        installation = GitHubInstallation(
+            github_installation_id=installation_id,
+            account_id=account_id,
+            account_login=account_login.strip(),
+            connected_by_id=user.id,
+        )
+    else:
+        installation.account_id = account_id
+        installation.account_login = account_login.strip()
+        installation.connected_by_id = user.id
+        installation.updated_at = utcnow()
+    session.add(installation)
+    session.commit()
+    return installation
+
+
 def save_project_repositories(
     session: Session,
     project: Project,
@@ -121,10 +150,7 @@ def save_project_repositories(
     else:
         session.refresh(binding)
     if binding.installation_id != installation.id:
-        raise HTTPException(
-            status.HTTP_409_CONFLICT,
-            "Project already uses another GitHub installation",
-        )
+        raise Conflict("Project already uses another GitHub installation")
 
     now = utcnow()
     existing = {
@@ -424,6 +450,7 @@ def advance_tickets_for_pull_request(
     artifact: GitHubArtifact,
     action: str,
     texts: Iterable[str | None],
+    tasks: BackgroundTasks | None = None,
 ) -> None:
     """Move the tickets a PR mentions: start work on open, finish on merge.
 
@@ -440,9 +467,10 @@ def advance_tickets_for_pull_request(
         target, movable = TicketStatus.DONE, set(TicketStatus) - {TicketStatus.DONE}
     else:
         return
+    project = session.get(Project, connection.project_id)
     for ticket in _matching_tickets(session, connection, texts):
         if ticket.status in movable:
-            set_status(session, ticket, target, commit=False)
+            set_status(session, ticket, target, project=project, tasks=tasks, commit=False)
 
 
 def sync_open_pull_requests(
@@ -625,6 +653,7 @@ def dispatch_github_event(
     event_type: str,
     payload: dict,
     github: GitHubClient,
+    tasks: BackgroundTasks | None = None,
 ) -> None:
     action = payload.get("action")
     if action is not None and not isinstance(action, str):
@@ -640,7 +669,7 @@ def dispatch_github_event(
             artifact = upsert_pull_request(session, connection, pull)
             texts = [pull.get("title"), pull.get("body"), head_ref]
             reconcile_pull_request_links(session, connection, artifact, texts)
-            advance_tickets_for_pull_request(session, connection, artifact, action, texts)
+            advance_tickets_for_pull_request(session, connection, artifact, action, texts, tasks)
         return
     if event_type == "pull_request_review" and action in _REVIEW_ACTIONS:
         number = _pull_number(payload)
@@ -775,21 +804,13 @@ def claim_github_delivery(session: Session, delivery: IntegrationDelivery) -> bo
     return True
 
 
-def _begin_sqlite_transaction(session: Session) -> None:
-    connection = session.connection()
-    if (
-        connection.dialect.name == "sqlite"
-        and not connection.connection.dbapi_connection.in_transaction
-    ):
-        connection.exec_driver_sql("BEGIN")
-
-
 def process_github_delivery(
     session: Session,
     delivery_id: str,
     event_type: str,
     payload: dict,
     github: GitHubClient,
+    tasks: BackgroundTasks | None = None,
 ) -> bool:
     delivery = IntegrationDelivery(
         provider="GITHUB",
@@ -797,11 +818,11 @@ def process_github_delivery(
         event_type=event_type,
     )
     try:
-        _begin_sqlite_transaction(session)
+        begin_write(session)
         if not claim_github_delivery(session, delivery):
             session.rollback()
             return False
-        dispatch_github_event(session, event_type, payload, github)
+        dispatch_github_event(session, event_type, payload, github, tasks)
         session.commit()
     except Exception:
         session.rollback()

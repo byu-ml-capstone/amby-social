@@ -229,3 +229,29 @@ def test_account_delete_anonymizes_user_and_removes_access(
         ).status_code
         == 401
     )
+
+
+def test_account_delete_unassigns_the_users_tickets(
+    client, session, make_user, make_project, add_member, login_as
+):
+    from app.models import Project
+    from app.services import create_ticket
+
+    user = make_user(email="ada@example.com", name="Ada", password="password123")
+    owner = make_user(email="grace@example.com")
+    project = make_project(owner, name="Payment Gateway")
+    add_member(project, user)
+    ticket = create_ticket(
+        session, session.get(Project, project.id), owner, title="Fix login", assignee_id=user.id
+    )
+    login_as(user.email, "password123")
+
+    response = client.post(
+        "/settings/delete",
+        data={"current_password": "password123", **_csrf(user)},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    session.refresh(ticket)
+    assert ticket.assignee_id is None

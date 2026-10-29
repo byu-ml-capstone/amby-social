@@ -3,14 +3,16 @@ import logging
 import time
 
 import httpx
-from fastapi import BackgroundTasks, HTTPException
+from fastapi import BackgroundTasks
 from sqlalchemy import Engine, and_, or_
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app import attachments
 from app.db import get_engine
+from app.errors import DomainError
 from app.gmail import GmailAuthError, GmailClient, decrypt_token
+from app.gmail_connections import REVOKED, mark_needs_reauth
 from app.gmail_parse import ParsedEmail, parse_message
 from app.models import (
     AttachmentSource,
@@ -19,6 +21,7 @@ from app.models import (
     IntegrationDelivery,
     Priority,
     Project,
+    ProjectMember,
     TicketAttachment,
     TicketType,
     User,
@@ -180,7 +183,7 @@ def _import_message(
     except IntegrityError:
         session.rollback()  # another worker imported this message first
         return None
-    except HTTPException as exc:  # ticket validation; a retry would fail the same way
+    except DomainError as exc:  # ticket validation; a retry would fail the same way
         session.rollback()
         return f"{_SKIPPED} {message['id']}: {exc.detail}"
     finally:
@@ -235,6 +238,18 @@ def sync_connection(session: Session, connection: GmailConnection, gmail: GmailC
     session.commit()
 
 
+def _connector_is_member(session: Session, connection: GmailConnection) -> bool:
+    return (
+        session.exec(
+            select(ProjectMember.id).where(
+                ProjectMember.project_id == connection.project_id,
+                ProjectMember.user_id == connection.user_id,
+            )
+        ).first()
+        is not None
+    )
+
+
 def sync_all(engine: Engine | None = None) -> None:
     engine = engine or get_engine()
     with Session(engine) as session:
@@ -249,15 +264,21 @@ def sync_all(engine: Engine | None = None) -> None:
                 connection = session.get(GmailConnection, connection_id)
                 if connection is None or connection.status != GmailConnectionStatus.ACTIVE:
                     continue
+                if not _connector_is_member(session, connection):
+                    # Tickets are created as the person who connected Gmail; once they leave
+                    # the project (or delete their account) an owner has to reconnect.
+                    mark_needs_reauth(
+                        session,
+                        connection,
+                        "The person who connected Gmail left the project. Reconnect Gmail.",
+                    )
+                    continue
                 try:
                     sync_connection(session, connection, gmail)
                 except GmailAuthError:
                     session.rollback()
                     _access_tokens.pop(connection_id, None)
-                    connection.status = GmailConnectionStatus.NEEDS_REAUTH
-                    connection.last_error = "Google access was revoked. Reconnect Gmail."
-                    session.add(connection)
-                    session.commit()
+                    mark_needs_reauth(session, connection, REVOKED)
                     logger.warning("gmail connection needs reauth: connection_id=%s", connection_id)
                 except Exception as exc:
                     session.rollback()
