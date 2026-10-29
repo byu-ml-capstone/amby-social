@@ -191,3 +191,53 @@ def test_non_owner_gets_403_on_patch_and_delete(
         == 403
     )
     assert client.delete(f"/api/v1/projects/{project.slug}/members/{owner.id}").status_code == 403
+
+
+def test_two_owners_demoting_each_other_at_once_leave_one_owner(
+    engine, make_user, make_project, add_member, monkeypatch
+):
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    from fastapi import HTTPException
+    from sqlmodel import select
+
+    from app import services
+    from app.models import Project
+    from app.services import update_project_member
+
+    ada = make_user(email="ada@example.com")
+    bob = make_user(email="bob@example.com")
+    project = make_project(ada)
+    add_member(project, bob, Role.OWNER)
+
+    real_owner_count = services._owner_count
+
+    def slow_owner_count(session, project_id):
+        count = real_owner_count(session, project_id)
+        time.sleep(0.2)  # widen the gap between counting owners and writing the demotion
+        return count
+
+    monkeypatch.setattr(services, "_owner_count", slow_owner_count)
+
+    def demote(user_id: str) -> int:
+        with Session(engine) as session:
+            try:
+                update_project_member(
+                    session, session.get(Project, project.id), user_id, Role.MEMBER
+                )
+            except HTTPException as exc:
+                return exc.status_code
+            return 200
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = sorted(pool.map(demote, [ada.id, bob.id]))
+
+    with Session(engine) as session:
+        owners = session.exec(
+            select(ProjectMember).where(
+                ProjectMember.project_id == project.id, ProjectMember.role == Role.OWNER
+            )
+        ).all()
+    assert results == [200, 409]
+    assert len(owners) == 1

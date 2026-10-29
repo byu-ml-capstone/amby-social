@@ -4,9 +4,9 @@ from types import SimpleNamespace
 import pytest
 from sqlmodel import Session, select
 
+from app import services
 from app.auth import make_csrf_token
 from app.models import Priority, Sprint, SprintStatus, SprintTicketHistory, Ticket, TicketStatus
-from app.routers import web_sprints
 
 
 @pytest.fixture
@@ -414,14 +414,14 @@ def test_owner_assigns_multiple_unassigned_tickets_to_planning_sprint(
 def test_assignment_rolls_back_after_a_partial_update(
     client, backlog_world, engine, login_as, monkeypatch
 ):
-    original_update_ticket = web_sprints.update_ticket
+    original_update_ticket = services.update_ticket
 
     def fail_after_first_update(*args, **kwargs):
         original_update_ticket(*args, **kwargs)
         args[0].flush()
         raise RuntimeError("injected failure")
 
-    monkeypatch.setattr(web_sprints, "update_ticket", fail_after_first_update)
+    monkeypatch.setattr(services, "update_ticket", fail_after_first_update)
     login_as(backlog_world.owner.email)
 
     with pytest.raises(RuntimeError, match="injected failure"):

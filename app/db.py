@@ -39,3 +39,18 @@ def get_engine() -> Engine:
 def get_session() -> Iterator[Session]:
     with Session(get_engine()) as session:
         yield session
+
+
+def begin_write(session: Session) -> None:
+    """Take SQLite's write lock before a check-then-write.
+
+    pysqlite opens a transaction only at the first INSERT/UPDATE/DELETE, so the reads that
+    decide a write run outside any transaction and another writer can commit in between.
+    BEGIN IMMEDIATE waits (busy_timeout) for the lock first, so those reads see final data.
+    """
+    connection = session.connection()
+    if (
+        connection.dialect.name == "sqlite"
+        and not connection.connection.dbapi_connection.in_transaction
+    ):
+        connection.exec_driver_sql("BEGIN IMMEDIATE")

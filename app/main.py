@@ -31,6 +31,8 @@ from app.routers import (
     gmail,
     web,
     web_auth,
+    web_github,
+    web_settings,
     web_sprints,
     web_tickets,
 )
@@ -154,8 +156,11 @@ templates.env.globals["asset_version"] = {
 app.include_router(web_auth.router)
 app.include_router(web.router)
 app.include_router(web_tickets.router)
-# Before web_sprints: its /settings/integrations/{provider}/disconnect would swallow gmail.
+# Before web_settings: its /settings/integrations/{provider}/disconnect would swallow
+# gmail and github.
 app.include_router(gmail.router)
+app.include_router(web_github.router)
+app.include_router(web_settings.router)
 app.include_router(web_sprints.router)
 
 

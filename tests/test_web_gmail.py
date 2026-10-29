@@ -7,6 +7,7 @@ import pytest
 from cryptography.fernet import Fernet
 from sqlmodel import select
 
+import app.gmail_connections as gmail_connections
 import app.main as main
 import app.routers.gmail as gmail_routes
 from app.auth import make_csrf_token
@@ -77,7 +78,8 @@ def _use_google(
         raise AssertionError(f"unexpected Google request {request.url}")
 
     transport = httpx.Client(transport=httpx.MockTransport(handler))
-    monkeypatch.setattr(gmail_routes, "GmailClient", lambda: RealGmailClient(settings, transport))
+    for module in (gmail_routes, gmail_connections):
+        monkeypatch.setattr(module, "GmailClient", lambda: RealGmailClient(settings, transport))
 
 
 def _connection(session, world, **overrides):

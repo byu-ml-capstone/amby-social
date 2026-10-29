@@ -11,14 +11,20 @@ from app.gmail import (
     GmailClient,
     authorize_url,
     decrypt_token,
-    encrypt_token,
     gmail_is_configured,
     issue_gmail_state,
     read_gmail_state,
 )
+from app.gmail_connections import (
+    REVOKED,
+    disconnect,
+    get_connection,
+    mark_needs_reauth,
+    save_connection,
+    save_label_mapping,
+)
 from app.models import (
     GmailConnection,
-    GmailConnectionStatus,
     Priority,
     Project,
     ProjectMember,
@@ -26,23 +32,13 @@ from app.models import (
     TicketType,
     User,
 )
-from app.routers.web_sprints import _settings
+from app.routers.web_settings import render_settings
 
 router = APIRouter(tags=["web"])
 _LABEL_IDS_FORM = Form(default=[])
 _ALL_LABEL_IDS_FORM = Form(default=[])
 _TYPES_FORM = Form(default=[])
 _PRIORITIES_FORM = Form(default=[])
-_REVOKED = "Google access was revoked. Reconnect Gmail."
-
-
-def _connection(session: Session, project: Project) -> GmailConnection:
-    connection = session.exec(
-        select(GmailConnection).where(GmailConnection.project_id == project.id)
-    ).first()
-    if connection is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Gmail is not connected")
-    return connection
 
 
 def _settings_redirect(project: Project, query: str = "") -> RedirectResponse:
@@ -58,10 +54,7 @@ def _mailbox_labels(session: Session, connection: GmailConnection) -> list[dict]
             access_token, _ = gmail.access_token(decrypt_token(connection.refresh_token_enc))
             return gmail.labels(access_token)
     except (GmailAuthError, InvalidToken):
-        connection.status = GmailConnectionStatus.NEEDS_REAUTH
-        connection.last_error = _REVOKED
-        session.add(connection)
-        session.commit()
+        mark_needs_reauth(session, connection, REVOKED)
         return None
     except httpx.HTTPError:
         raise HTTPException(
@@ -120,30 +113,14 @@ def gmail_oauth_callback(
     except (httpx.HTTPError, ValueError, KeyError, GmailAuthError):
         return _settings_redirect(project, "?gmail_error=verification_failed")
 
-    connection = session.exec(
-        select(GmailConnection).where(GmailConnection.project_id == project.id)
-    ).first()
-    if connection is None:
-        connection = GmailConnection(
-            project_id=project.id,
-            user_id=user.id,
-            google_email=google_email,
-            refresh_token_enc="",
-            history_id=history_id,
-        )
-    elif connection.google_email != google_email:
-        # Another mailbox: its label ids and history ids mean nothing here.
-        connection.label_mapping = {}
-        connection.history_id = history_id
-    # Reconnecting the same mailbox keeps history_id, so mail that arrived while access was
-    # broken is still imported on the next cycle.
-    connection.user_id = user.id
-    connection.google_email = google_email[:255]
-    connection.refresh_token_enc = encrypt_token(refresh_token)
-    connection.status = GmailConnectionStatus.ACTIVE
-    connection.last_error = None
-    session.add(connection)
-    session.commit()
+    save_connection(
+        session,
+        project,
+        user,
+        google_email=google_email,
+        refresh_token=refresh_token,
+        history_id=history_id,
+    )
     return RedirectResponse(
         f"/projects/{project.slug}/settings/integrations/gmail/labels",
         status_code=status.HTTP_303_SEE_OTHER,
@@ -158,22 +135,22 @@ def gmail_label_selection(
     session: Session = Depends(get_session),
 ) -> Response:
     project, member = access
-    connection = _connection(session, project)
+    connection = get_connection(session, project)
     labels = _mailbox_labels(session, connection)
     if labels is None:
-        return _settings(
+        return render_settings(
             request,
             session,
             user,
             project,
             member,
-            error=_REVOKED,
+            error=REVOKED,
             status_code=status.HTTP_409_CONFLICT,
         )
     labels.sort(
         key=lambda label: (label["id"] not in connection.label_mapping, label["name"].lower())
     )
-    return _settings(request, session, user, project, member, gmail_available_labels=labels)
+    return render_settings(request, session, user, project, member, gmail_available_labels=labels)
 
 
 @router.post(
@@ -191,7 +168,7 @@ def save_gmail_labels(
     session: Session = Depends(get_session),
 ) -> Response:
     project, member = access
-    connection = _connection(session, project)
+    connection = get_connection(session, project)
     try:
         rows = {
             label_id: (TicketType(ticket_type), Priority(priority))
@@ -203,36 +180,18 @@ def save_gmail_labels(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Invalid label mapping"
         ) from None
-    selected = set(label_ids)
-    if not selected <= set(rows):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Invalid label mapping")
     labels = _mailbox_labels(session, connection)
     if labels is None:
-        return _settings(
+        return render_settings(
             request,
             session,
             user,
             project,
             member,
-            error=_REVOKED,
+            error=REVOKED,
             status_code=status.HTTP_409_CONFLICT,
         )
-    names = {label["id"]: label["name"] for label in labels}
-    if not selected <= set(names):
-        raise HTTPException(
-            status.HTTP_422_UNPROCESSABLE_CONTENT, "Selected label is not available"
-        )
-    connection.label_mapping = {
-        label_id: {
-            "name": names[label_id],
-            "type": rows[label_id][0].value,
-            "priority": rows[label_id][1].value,
-        }
-        for label_id in names
-        if label_id in selected
-    }
-    session.add(connection)
-    session.commit()
+    save_label_mapping(session, connection, labels, rows, set(label_ids))
     return _settings_redirect(project, "?saved=1")
 
 
@@ -250,20 +209,5 @@ def disconnect_gmail(
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "confirm must equal Disconnect Gmail"
         )
-    connection = _connection(session, project)
-    # Revoking ends the whole Google grant, so leave it while another project reads this mailbox.
-    shared = session.exec(
-        select(GmailConnection.id).where(
-            GmailConnection.google_email == connection.google_email,
-            GmailConnection.id != connection.id,
-        )
-    ).first()
-    if shared is None:
-        try:
-            with GmailClient() as gmail:
-                gmail.revoke(decrypt_token(connection.refresh_token_enc))
-        except (httpx.HTTPError, InvalidToken):
-            pass  # best effort: the stored token is deleted either way
-    session.delete(connection)
-    session.commit()
+    disconnect(session, get_connection(session, project))
     return _settings_redirect(project)

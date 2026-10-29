@@ -331,3 +331,15 @@ def test_delete_rejects_a_ticket_in_closed_sprint_history(
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Ticket belongs to closed sprint history"
+
+
+def test_api_deletes_a_subtask(client, seeded):
+    _, project = seeded
+    ticket = client.get(f"/api/v1/projects/{project.slug}/tickets").json()["items"][0]
+    subtask = client.post(
+        f"/api/v1/tickets/{ticket['id']}/subtasks", json={"title": "Write tests"}
+    ).json()
+
+    assert client.delete(f"/api/v1/subtasks/{subtask['id']}").status_code == 204
+    assert client.get(f"/api/v1/tickets/{ticket['id']}").json()["subtasks"] == []
+    assert client.delete(f"/api/v1/subtasks/{subtask['id']}").status_code == 404

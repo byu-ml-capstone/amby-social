@@ -33,7 +33,7 @@
         <div><dt>Completed</dt><dd>{{ summary.sprint.completed_points or 0 }} pts</dd></div>
         <div><dt>Completed tickets</dt><dd>{{ summary.completed_count }}</dd></div>
         <div><dt>Rollover</dt><dd>{{ summary.rollover_count }}</dd></div>
-        <div><dt>Delayed</dt><dd>{{ summary.delay_total }} days</dd></div>
+        <div><dt>Rolled over 2+ times</dt><dd>{{ summary.repeat_rollovers }}</dd></div>
       </dl>
     </article>
     {% else %}

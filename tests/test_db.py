@@ -1,4 +1,10 @@
+import sqlite3
+
+import pytest
 from sqlalchemy import text
+from sqlmodel import Session
+
+from app.db import begin_write
 
 
 def test_pragmas_are_applied_to_every_connection(engine):
@@ -14,3 +20,16 @@ def test_sqlite_supports_returning(engine):
         version = conn.execute(text("select sqlite_version()")).scalar()
     major, minor, *_ = (int(p) for p in version.split("."))
     assert (major, minor) >= (3, 35), f"RETURNING needs SQLite 3.35+, found {version}"
+
+
+def test_begin_write_holds_the_write_lock_until_commit(engine):
+    with Session(engine) as session:
+        begin_write(session)
+        other = sqlite3.connect(engine.url.database, timeout=0)
+        try:
+            with pytest.raises(sqlite3.OperationalError, match="locked"):
+                other.execute("CREATE TABLE probe (id INTEGER)")
+            session.commit()
+            other.execute("CREATE TABLE probe (id INTEGER)")
+        finally:
+            other.close()

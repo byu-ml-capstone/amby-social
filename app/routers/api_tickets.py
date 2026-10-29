@@ -33,6 +33,7 @@ from app.schemas import (
 from app.services import (
     create_subtask,
     create_ticket,
+    delete_subtask_record,
     delete_ticket_record,
     set_status,
     update_subtask,
@@ -232,9 +233,8 @@ def delete_subtask(
     subtask = session.get(Subtask, subtask_id)
     if subtask is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Subtask not found")
-    load_ticket_for_write(subtask.ticket_id, user, session)
-    session.delete(subtask)
-    session.commit()
+    ticket, _, _ = load_ticket_for_write(subtask.ticket_id, user, session)
+    delete_subtask_record(session, ticket, subtask_id)
 
 
 @router.get("/attachments/{attachment_id}")

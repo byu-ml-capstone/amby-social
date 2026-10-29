@@ -251,3 +251,25 @@ def test_deleting_a_project_removes_its_reports(client, engine, closed_world, lo
     assert response.status_code == 204
     with Session(engine) as session:
         assert session.exec(select(SprintReport)).all() == []
+
+
+def test_a_report_finalized_mid_edit_rejects_the_edit(engine, closed_world):
+    from fastapi import HTTPException
+
+    from app.models import User
+    from app.sprint_reports import finalize_report, save_report
+
+    with Session(engine) as editor, Session(engine) as finalizer:
+        sprint = editor.get(Sprint, closed_world["sprint_id"])
+        stale = editor.exec(select(SprintReport).where(SprintReport.sprint_id == sprint.id)).one()
+        finalize_report(
+            finalizer,
+            finalizer.get(SprintReport, stale.id),
+            finalizer.get(User, closed_world["owner"].id),
+        )
+
+        with pytest.raises(HTTPException) as raised:
+            save_report(editor, sprint, stale, {"goal_summary": "Late edit"})
+
+    assert raised.value.status_code == 409
+    assert _report(engine, closed_world["sprint_id"]).goal_summary != "Late edit"

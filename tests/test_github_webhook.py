@@ -1031,6 +1031,37 @@ def test_merged_pull_request_finishes_every_mentioned_ticket(
         assert ticket.completed_at is not None
 
 
+def test_merged_pull_request_sends_the_done_chat_notification(
+    signed_webhook, connected_repo, session, monkeypatch
+):
+    from app.models import Project, WebhookType
+    from app.services import set_chat_webhook
+
+    set_chat_webhook(
+        session,
+        session.get(Project, connected_repo.project.id),
+        WebhookType.SLACK,
+        "https://example.com/hook",
+    )
+    sent: list[dict] = []
+    monkeypatch.setattr(
+        "app.notifications.dispatch", lambda wt, url, payload, client=None: sent.append(payload)
+    )
+
+    _send_pull(
+        signed_webhook,
+        connected_repo.project,
+        "closed",
+        state="closed",
+        merged_at="2026-09-17T13:00:00Z",
+    )
+
+    assert sorted((p["event"], p["ticket_number"]) for p in sent) == [
+        ("TICKET_DONE", connected_repo.first.ticket_number),
+        ("TICKET_DONE", connected_repo.second.ticket_number),
+    ]
+
+
 def test_pull_request_closed_without_merge_leaves_tickets_alone(
     signed_webhook, connected_repo, session
 ):
