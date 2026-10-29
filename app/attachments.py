@@ -20,7 +20,7 @@ from sqlmodel import Session, select
 
 from app.config import settings
 from app.db import begin_write
-from app.models import AttachmentSource, Ticket, TicketAttachment
+from app.models import AttachmentSource, Role, Ticket, TicketAttachment, User
 
 ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024
 PROJECT_QUOTA_BYTES = 1024 * 1024 * 1024
@@ -192,6 +192,24 @@ def attach_uploads(
         discard(rows)
         raise
     return rows
+
+
+def can_delete(row: TicketAttachment, user: User, role: Role) -> bool:
+    return row.uploaded_by == user.id or role == Role.OWNER
+
+
+def delete_attachment(
+    session: Session, ticket: Ticket, attachment_id: str, user: User, role: Role
+) -> None:
+    """The uploader or an owner removes one attachment: its row, then its file."""
+    row = session.get(TicketAttachment, attachment_id)
+    if row is None or row.ticket_id != ticket.id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
+    if not can_delete(row, user, role):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot delete this attachment")
+    session.delete(row)
+    session.commit()
+    delete(row.project_id, attachment_id)  # after commit: a failure leaves an orphan file only
 
 
 def file_response(row: TicketAttachment) -> FileResponse:

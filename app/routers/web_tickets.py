@@ -34,7 +34,6 @@ from app.models import (
     Priority,
     Project,
     ProjectMember,
-    Role,
     Sprint,
     SprintStatus,
     Subtask,
@@ -185,7 +184,7 @@ def _attachment_context(
                 f"/projects/{project.slug}/tickets/{ticket.ticket_number}"
                 f"/attachments/{row.id}/delete"
             ),
-            "can_delete": row.uploaded_by == viewer.id or role == Role.OWNER,
+            "can_delete": attachments.can_delete(row, viewer, role),
         }
         for row in rows
     ]
@@ -530,14 +529,7 @@ def delete_ticket_attachment(
 ) -> Response:
     project, membership = project_and_member
     ticket = _project_ticket(session, project, ticket_number)
-    row = session.get(TicketAttachment, attachment_id)
-    if row is None or row.ticket_id != ticket.id:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Attachment not found")
-    if row.uploaded_by != user.id and membership.role != Role.OWNER:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "Cannot delete this attachment")
-    session.delete(row)
-    session.commit()
-    attachments.delete(project.id, attachment_id)
+    attachments.delete_attachment(session, ticket, attachment_id, user, membership.role)
     return _render_ticket_attachments(request, session, user, project, ticket)
 
 
