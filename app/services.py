@@ -832,6 +832,61 @@ def validate_sprint_assignment(
     return sprint
 
 
+def reorder_backlog_ticket(
+    session: Session, project: Project, ticket_id: str, direction: str
+) -> None:
+    """Swap a backlog ticket's rank with its neighbour above ("up") or below ("down")."""
+    begin_write(session)  # two moves at once must swap ranks from the same order
+    tickets = session.exec(
+        select(Ticket)
+        .where(Ticket.project_id == project.id, Ticket.sprint_id.is_(None))
+        .order_by(Ticket.backlog_rank.desc())
+    ).all()
+    index = next((i for i, ticket in enumerate(tickets) if ticket.id == ticket_id), None)
+    offset = -1 if direction == "up" else 1 if direction == "down" else 0
+    if index is None or not offset or not 0 <= index + offset < len(tickets):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Cannot move ticket")
+    other = tickets[index + offset]
+    tickets[index].backlog_rank, other.backlog_rank = (
+        other.backlog_rank,
+        tickets[index].backlog_rank,
+    )
+    session.add_all((tickets[index], other))
+    session.commit()
+
+
+def plan_backlog_tickets(
+    session: Session, project: Project, sprint_id: str, ticket_ids: list[str]
+) -> Sprint:
+    """Move backlog tickets (no sprint yet) into the project's planning sprint, all or none."""
+    sprint = session.exec(
+        select(Sprint).where(
+            Sprint.id == sprint_id,
+            Sprint.project_id == project.id,
+            Sprint.status == SprintStatus.PLANNING,
+        )
+    ).first()
+    if sprint is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sprint not found")
+    tickets = session.exec(
+        select(Ticket).where(
+            Ticket.project_id == project.id,
+            Ticket.sprint_id.is_(None),
+            Ticket.id.in_(ticket_ids),
+        )
+    ).all()
+    if len(tickets) != len(set(ticket_ids)):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
+    try:
+        for ticket in tickets:
+            update_ticket(session, ticket, project, sprint_id=sprint.id, commit=False)
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    return sprint
+
+
 def allocate_ticket_number(session: Session, project_id: str) -> int:
     # Atomic per-project counter: UPDATE ... RETURNING runs inside the
     # caller's open transaction, alongside the ticket insert that follows.

@@ -23,10 +23,11 @@ from app.schemas import SprintCreate
 from app.services import (
     close_sprint,
     create_sprints,
+    plan_backlog_tickets,
+    reorder_backlog_ticket,
     sprint_chronology,
     start_sprint,
     update_sprint,
-    update_ticket,
 )
 from app.sprint_reports import REPORT_FIELDS, finalize_report, get_report, save_report
 
@@ -221,22 +222,7 @@ def move_backlog_ticket(
     session: Session = Depends(get_session),
 ) -> Response:
     project, _ = access
-    tickets = session.exec(
-        select(Ticket)
-        .where(Ticket.project_id == project.id, Ticket.sprint_id.is_(None))
-        .order_by(Ticket.backlog_rank.desc())
-    ).all()
-    index = next((i for i, ticket in enumerate(tickets) if ticket.id == ticket_id), None)
-    offset = -1 if direction == "up" else 1 if direction == "down" else 0
-    if index is None or not offset or not 0 <= index + offset < len(tickets):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Cannot move ticket")
-    other = tickets[index + offset]
-    tickets[index].backlog_rank, other.backlog_rank = (
-        other.backlog_rank,
-        tickets[index].backlog_rank,
-    )
-    session.add_all((tickets[index], other))
-    session.commit()
+    reorder_backlog_ticket(session, project, ticket_id, direction)
     return RedirectResponse(
         f"/projects/{project.slug}/backlog", status_code=status.HTTP_303_SEE_OTHER
     )
@@ -497,31 +483,7 @@ def assign_tickets_to_planning_sprint(
     session: Session = Depends(get_session),
 ) -> Response:
     project, _ = access
-    sprint = session.exec(
-        select(Sprint).where(
-            Sprint.id == sprint_id,
-            Sprint.project_id == project.id,
-            Sprint.status == SprintStatus.PLANNING,
-        )
-    ).first()
-    if sprint is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Sprint not found")
-    tickets = session.exec(
-        select(Ticket).where(
-            Ticket.project_id == project.id,
-            Ticket.sprint_id.is_(None),
-            Ticket.id.in_(ticket_ids),
-        )
-    ).all()
-    if len(tickets) != len(set(ticket_ids)):
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ticket not found")
-    try:
-        for ticket in tickets:
-            update_ticket(session, ticket, project, sprint_id=sprint.id, commit=False)
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
+    plan_backlog_tickets(session, project, sprint_id, ticket_ids)
     return RedirectResponse(
         f"/projects/{project.slug}/backlog", status_code=status.HTTP_303_SEE_OTHER
     )
