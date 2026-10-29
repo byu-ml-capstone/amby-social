@@ -11,6 +11,7 @@ from sqlmodel import Session, select
 from app import attachments
 from app.db import get_engine
 from app.gmail import GmailAuthError, GmailClient, decrypt_token
+from app.gmail_connections import REVOKED, mark_needs_reauth
 from app.gmail_parse import ParsedEmail, parse_message
 from app.models import (
     AttachmentSource,
@@ -265,22 +266,18 @@ def sync_all(engine: Engine | None = None) -> None:
                 if not _connector_is_member(session, connection):
                     # Tickets are created as the person who connected Gmail; once they leave
                     # the project (or delete their account) an owner has to reconnect.
-                    connection.status = GmailConnectionStatus.NEEDS_REAUTH
-                    connection.last_error = (
-                        "The person who connected Gmail left the project. Reconnect Gmail."
+                    mark_needs_reauth(
+                        session,
+                        connection,
+                        "The person who connected Gmail left the project. Reconnect Gmail.",
                     )
-                    session.add(connection)
-                    session.commit()
                     continue
                 try:
                     sync_connection(session, connection, gmail)
                 except GmailAuthError:
                     session.rollback()
                     _access_tokens.pop(connection_id, None)
-                    connection.status = GmailConnectionStatus.NEEDS_REAUTH
-                    connection.last_error = "Google access was revoked. Reconnect Gmail."
-                    session.add(connection)
-                    session.commit()
+                    mark_needs_reauth(session, connection, REVOKED)
                     logger.warning("gmail connection needs reauth: connection_id=%s", connection_id)
                 except Exception as exc:
                     session.rollback()
