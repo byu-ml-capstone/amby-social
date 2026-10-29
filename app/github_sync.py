@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from app.config import Settings, settings
+from app.db import begin_write
 from app.github import AvailableRepository, GitHubClient
 from app.models import (
     GitHubArtifact,
@@ -775,15 +776,6 @@ def claim_github_delivery(session: Session, delivery: IntegrationDelivery) -> bo
     return True
 
 
-def _begin_sqlite_transaction(session: Session) -> None:
-    connection = session.connection()
-    if (
-        connection.dialect.name == "sqlite"
-        and not connection.connection.dbapi_connection.in_transaction
-    ):
-        connection.exec_driver_sql("BEGIN")
-
-
 def process_github_delivery(
     session: Session,
     delivery_id: str,
@@ -797,7 +789,7 @@ def process_github_delivery(
         event_type=event_type,
     )
     try:
-        _begin_sqlite_transaction(session)
+        begin_write(session)
         if not claim_github_delivery(session, delivery):
             session.rollback()
             return False
