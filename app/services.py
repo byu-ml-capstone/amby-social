@@ -15,6 +15,7 @@ from sqlmodel import Session, select
 from app import attachments
 from app.auth import hash_password
 from app.config import settings
+from app.db import begin_write
 from app.models import (
     GitHubArtifact,
     GitHubConnectState,
@@ -334,6 +335,7 @@ def add_project_member(session: Session, project: Project, email: str, role: Rol
 def update_project_member(
     session: Session, project: Project, user_id: str, role: Role
 ) -> ProjectMember:
+    begin_write(session)  # owner count and the write must see the same owners
     member = session.exec(
         select(ProjectMember).where(
             ProjectMember.project_id == project.id, ProjectMember.user_id == user_id
@@ -351,6 +353,7 @@ def update_project_member(
 
 
 def remove_project_member(session: Session, project: Project, user_id: str) -> None:
+    begin_write(session)  # owner count and the write must see the same owners
     member = session.exec(
         select(ProjectMember).where(
             ProjectMember.project_id == project.id, ProjectMember.user_id == user_id
