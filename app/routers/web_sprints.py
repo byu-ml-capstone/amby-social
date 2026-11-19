@@ -4,12 +4,15 @@ from pydantic import ValidationError
 from sqlmodel import Session, select
 
 from app.auth import current_user, project_owner, project_reader, project_writer, verify_csrf
+from app.config import settings
 from app.db import get_session
+from app.errors import Invalid
 from app.models import (
     REPORT_TEXT_MAX_LENGTH,
     Priority,
     Project,
     ProjectMember,
+    ReportAuthor,
     Sprint,
     SprintStatus,
     SprintTicketHistory,
@@ -18,6 +21,7 @@ from app.models import (
     TicketType,
     User,
 )
+from app.report_generation import generate_report_markdown
 from app.routers.web_common import render
 from app.schemas import SprintCreate
 from app.services import (
@@ -32,11 +36,13 @@ from app.services import (
 from app.sprint_reports import (
     REPORT_FIELDS,
     REPORT_MARKDOWN_MAX_LENGTH,
+    build_payload,
     build_report_markdown,
     finalize_report,
     get_report,
     parse_report_markdown,
     save_report,
+    validate_generated_report_markdown,
 )
 
 router = APIRouter(tags=["web"])
@@ -319,6 +325,23 @@ def sprint_history_detail(
 ) -> Response:
     project, member = access
     sprint = _closed_sprint(session, project, sprint_id)
+    return _render_sprint_history_detail(request, session, project, member, user, sprint)
+
+
+def _render_sprint_history_detail(
+    request: Request,
+    session: Session,
+    project: Project,
+    member: ProjectMember,
+    user: User,
+    sprint: Sprint,
+    report_markdown: str | None = None,
+    report_is_generated: bool = False,
+    report_editing: bool = False,
+    report_message: str | None = None,
+    report_message_is_error: bool = False,
+    status_code: int = status.HTTP_200_OK,
+) -> Response:
     rows = _history_rows(session, [sprint.id])
     times = _times_rolled_over(session, [sprint], rows)
     report = get_report(session, sprint)
@@ -337,9 +360,15 @@ def sprint_history_detail(
             "repeat_rollovers": _repeat_rollovers(sprint, times),
             "times_rolled_over": times,
             "report": report,
-            "report_markdown": build_report_markdown(report),
+            "report_markdown": report_markdown or build_report_markdown(report),
             "report_markdown_max_length": REPORT_MARKDOWN_MAX_LENGTH,
+            "openai_configured": bool(settings.openai_api_key),
+            "report_is_generated": report_is_generated,
+            "report_editing": report_editing,
+            "report_message": report_message,
+            "report_message_is_error": report_message_is_error,
         },
+        status_code=status_code,
         session=session,
     )
 
@@ -363,9 +392,84 @@ async def save_sprint_report_form(
             if field in form
         }
     )
-    save_report(session, sprint, get_report(session, sprint), changes)
+    author = (
+        ReportAuthor.SERVER
+        if form.get("generated_by") == ReportAuthor.SERVER.value
+        else ReportAuthor.HUMAN
+    )
+    save_report(session, sprint, get_report(session, sprint), changes, author)
     return RedirectResponse(
         f"/projects/{project.slug}/sprints/{sprint.id}", status_code=status.HTTP_303_SEE_OTHER
+    )
+
+
+@router.post(
+    "/projects/{slug}/sprints/{sprint_id}/report/generate", dependencies=[Depends(verify_csrf)]
+)
+async def generate_sprint_report_form(
+    sprint_id: str,
+    request: Request,
+    access: tuple[Project, ProjectMember] = Depends(project_reader),
+    user: User = Depends(current_user),
+    session: Session = Depends(get_session),
+) -> Response:
+    project, member = access
+    sprint = _closed_sprint(session, project, sprint_id)
+    report = get_report(session, sprint)
+    if report.is_finalized:
+        raise HTTPException(status.HTTP_409_CONFLICT, "Sprint report is finalized")
+    if not settings.openai_api_key:
+        return _render_sprint_history_detail(
+            request,
+            session,
+            project,
+            member,
+            user,
+            sprint,
+            report_message="Set OPENAI_API_KEY in the server environment to generate reports.",
+            report_message_is_error=True,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+        )
+    try:
+        markdown = await generate_report_markdown(
+            settings.openai_api_key, build_payload(session, sprint)
+        )
+        validate_generated_report_markdown(markdown)
+    except Invalid:
+        return _render_sprint_history_detail(
+            request,
+            session,
+            project,
+            member,
+            user,
+            sprint,
+            report_message="OpenAI returned an incomplete or oversized report. Please try again.",
+            report_message_is_error=True,
+            status_code=status.HTTP_502_BAD_GATEWAY,
+        )
+    except HTTPException as exc:
+        return _render_sprint_history_detail(
+            request,
+            session,
+            project,
+            member,
+            user,
+            sprint,
+            report_message=exc.detail,
+            report_message_is_error=True,
+            status_code=exc.status_code,
+        )
+    return _render_sprint_history_detail(
+        request,
+        session,
+        project,
+        member,
+        user,
+        sprint,
+        report_markdown=markdown,
+        report_is_generated=True,
+        report_editing=True,
+        report_message="AI draft generated. Review it, then save to keep it.",
     )
 
 

@@ -85,7 +85,8 @@ attachments on the `kanban-data` named volume. Push to `staging` (or merge to
 Per Coolify Application (staging and production):
 
 1. Set `APP_HOST` and `SESSION_SECRET` in Environment Variables. The full list,
-   including the optional GitHub App values, is in `.env.example`.
+   including the optional GitHub App values, is in `.env.example`. Set
+   `OPENAI_API_KEY` there to enable web sprint-report generation.
 2. Domains: attach `https://<APP_HOST>` to the **`web`** service, then redeploy.
 3. Verify with `./smoke-test.sh https://<APP_HOST>`.
 
