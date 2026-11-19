@@ -51,7 +51,6 @@
           <input type="hidden" name="_csrf" value="{{ csrf_token }}">
           <button class="app-secondary-button" type="submit">Generate draft with AI</button>
         </form>
-        <p class="sprint-meta">Sprint data is sent to OpenAI to generate the draft.</p>
         {% else %}
         <p class="sprint-meta">Set <code>OPENAI_API_KEY</code> on the server to enable generation.</p>
         {% endif %}
