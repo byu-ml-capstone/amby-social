@@ -335,6 +335,29 @@
       editButton.focus();
       return;
     }
+    const editReport = event.target.closest("[data-report-edit]");
+    if (editReport) {
+      const editor = editReport.closest("[data-report-editor]");
+      editReport.hidden = true;
+      editor.querySelector("[data-report-view]").hidden = true;
+      const form = editor.querySelector("[data-report-fields]");
+      form.hidden = false;
+      form.querySelector("textarea").focus();
+      return;
+    }
+    const cancelReport = event.target.closest("[data-report-cancel]");
+    if (cancelReport) {
+      const editor = cancelReport.closest("[data-report-editor]");
+      const form = editor.querySelector("[data-report-fields]");
+      const textarea = form.querySelector("textarea");
+      textarea.value = textarea.defaultValue;
+      form.hidden = true;
+      editor.querySelector("[data-report-view]").hidden = false;
+      const editButton = editor.querySelector("[data-report-edit]");
+      editButton.hidden = false;
+      editButton.focus();
+      return;
+    }
     const copyButton = event.target.closest("[data-copy-text]");
     if (copyButton) {
       const status = copyButton.nextElementSibling;

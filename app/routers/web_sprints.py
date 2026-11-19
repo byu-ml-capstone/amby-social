@@ -29,7 +29,15 @@ from app.services import (
     start_sprint,
     update_sprint,
 )
-from app.sprint_reports import REPORT_FIELDS, finalize_report, get_report, save_report
+from app.sprint_reports import (
+    REPORT_FIELDS,
+    REPORT_MARKDOWN_MAX_LENGTH,
+    build_report_markdown,
+    finalize_report,
+    get_report,
+    parse_report_markdown,
+    save_report,
+)
 
 router = APIRouter(tags=["web"])
 _TICKET_IDS_FORM = Form(...)
@@ -313,6 +321,7 @@ def sprint_history_detail(
     sprint = _closed_sprint(session, project, sprint_id)
     rows = _history_rows(session, [sprint.id])
     times = _times_rolled_over(session, [sprint], rows)
+    report = get_report(session, sprint)
     return render(
         request,
         "sprint_history_detail.html",
@@ -327,8 +336,9 @@ def sprint_history_detail(
             "rollover_count": sum(not entry.was_completed for entry, _ in rows),
             "repeat_rollovers": _repeat_rollovers(sprint, times),
             "times_rolled_over": times,
-            "report": get_report(session, sprint),
-            "report_fields": REPORT_FIELDS,
+            "report": report,
+            "report_markdown": build_report_markdown(report),
+            "report_markdown_max_length": REPORT_MARKDOWN_MAX_LENGTH,
         },
         session=session,
     )
@@ -344,11 +354,15 @@ async def save_sprint_report_form(
     project, _ = access
     sprint = _closed_sprint(session, project, sprint_id)
     form = await request.form()
-    changes = {
-        field: str(form[field])[:REPORT_TEXT_MAX_LENGTH]
-        for field, _ in REPORT_FIELDS
-        if field in form
-    }
+    changes = (
+        parse_report_markdown(str(form["report_markdown"]))
+        if "report_markdown" in form
+        else {
+            field: str(form[field])[:REPORT_TEXT_MAX_LENGTH]
+            for field, _ in REPORT_FIELDS
+            if field in form
+        }
+    )
     save_report(session, sprint, get_report(session, sprint), changes)
     return RedirectResponse(
         f"/projects/{project.slug}/sprints/{sprint.id}", status_code=status.HTTP_303_SEE_OTHER

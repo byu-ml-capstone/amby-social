@@ -8,6 +8,7 @@ from app.db import begin_write
 from app.errors import Conflict, Invalid, NotFound
 from app.models import (
     Project,
+    REPORT_TEXT_MAX_LENGTH,
     ReportAuthor,
     ReportGenerationStatus,
     Sprint,
@@ -27,6 +28,93 @@ REPORT_FIELDS = (
     ("velocity_summary", "Velocity"),
     ("faculty_notes", "Reviewer notes"),
 )
+REPORT_MARKDOWN_SECTIONS = (
+    ("Sprint Goal", "goal_summary"),
+    ("Velocity Trend (last 3 sprints)", "velocity_summary"),
+    ("Sprint Deliveries & Validation", "completed_summary"),
+    ("Key Decisions / Blockers / Risks / Tradeoffs", "blockers_and_rollovers"),
+    ("Next Sprint Goals", "goal_summary"),
+    ("Faculty Feedback / Requests", "faculty_notes"),
+)
+REPORT_MARKDOWN_MAX_LENGTH = REPORT_TEXT_MAX_LENGTH * len(REPORT_FIELDS)
+_REPORT_FIELD_SECTIONS = (
+    ("goal_summary", ("Sprint Goal", "Next Sprint Goals")),
+    ("completed_summary", ("Sprint Deliveries & Validation",)),
+    ("blockers_and_rollovers", ("Key Decisions / Blockers / Risks / Tradeoffs",)),
+    ("velocity_summary", ("Velocity Trend (last 3 sprints)",)),
+    ("faculty_notes", ("Faculty Feedback / Requests",)),
+)
+_REPORT_FIELD_DEFAULT_SECTIONS = (
+    ("goal_summary", "Sprint Goal"),
+    ("completed_summary", "Sprint Deliveries & Validation"),
+    ("blockers_and_rollovers", "Key Decisions / Blockers / Risks / Tradeoffs"),
+    ("velocity_summary", "Velocity Trend (last 3 sprints)"),
+    ("faculty_notes", "Faculty Feedback / Requests"),
+)
+_REPORT_MARKDOWN_HEADINGS = {heading for heading, _ in REPORT_MARKDOWN_SECTIONS}
+
+
+def _split_report_markdown(markdown: str) -> tuple[dict[str, str], str]:
+    sections: dict[str, list[str]] = {}
+    preamble: list[str] = []
+    current_section = None
+
+    for line in markdown.splitlines():
+        heading = line.strip()[3:].strip() if line.strip().startswith("## ") else None
+        if heading in _REPORT_MARKDOWN_HEADINGS:
+            current_section = heading
+            sections.setdefault(heading, [])
+        elif current_section:
+            sections[current_section].append(line)
+        else:
+            preamble.append(line)
+
+    return (
+        {heading: "\n".join(lines).strip() for heading, lines in sections.items()},
+        "\n".join(preamble).strip(),
+    )
+
+
+def build_report_markdown(report: SprintReport) -> str:
+    section_text = {heading: "" for heading in _REPORT_MARKDOWN_HEADINGS}
+    for field, default_section in _REPORT_FIELD_DEFAULT_SECTIONS:
+        value = getattr(report, field).strip()
+        if not value:
+            continue
+        parsed_sections, preamble = _split_report_markdown(value)
+        if not parsed_sections:
+            section_text[default_section] = value
+            continue
+        section_text.update(parsed_sections)
+        if preamble:
+            section_text[default_section] = "\n\n".join(
+                text for text in (preamble, section_text[default_section]) if text
+            )
+
+    return "\n\n".join(
+        f"## {heading}" + (f"\n\n{section_text[heading]}" if section_text[heading] else "")
+        for heading, _ in REPORT_MARKDOWN_SECTIONS
+    )
+
+
+def parse_report_markdown(markdown: str) -> dict[str, str]:
+    section_text, preamble = _split_report_markdown(markdown)
+    if preamble:
+        section_text["Sprint Goal"] = "\n\n".join(
+            text for text in (preamble, section_text.get("Sprint Goal", "")) if text
+        )
+
+    changes = {
+        field: "\n\n".join(
+            f"## {heading}" + (f"\n\n{section_text[heading]}" if section_text.get(heading) else "")
+            for heading in headings
+            if section_text.get(heading)
+        )
+        for field, headings in _REPORT_FIELD_SECTIONS
+    }
+    if any(len(value) > REPORT_TEXT_MAX_LENGTH for value in changes.values()):
+        raise Invalid(f"Each saved report field must be {REPORT_TEXT_MAX_LENGTH} characters or fewer.")
+    return changes
 
 
 def get_report(session: Session, sprint: Sprint) -> SprintReport:
