@@ -379,6 +379,11 @@ html { accent-color: var(--accent); caret-color: var(--text); scrollbar-color: v
 .sprint-history-detail { margin-bottom: var(--space-4); padding: var(--space-4); }
 .sprint-history-detail .sprint-history-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .sprint-history-tickets { margin-bottom: var(--space-4); }
+.sprint-report-toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-3); }
+.sprint-report-preview > :first-child { margin-top: 0; }
+.sprint-report-preview > :last-child { margin-bottom: 0; }
+.sprint-report-form[hidden] { display: none; }
+.sprint-report-form textarea { min-height: 24rem; }
 
 .settings-section { padding: var(--space-4); }
 .settings-section > h2 { margin-bottom: var(--space-3); }

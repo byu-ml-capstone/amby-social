@@ -34,24 +34,29 @@
     <h2 id="report-heading">Sprint report</h2>
     {% if report.is_finalized %}
     <p class="form-status">Finalized {{ report.finalized_at.strftime('%b %-d, %Y') }}</p>
-    {% for field, label in report_fields %}{% if report[field] %}
-    <h3>{{ label }}</h3>
-    <div>{{ report[field]|markdown|safe }}</div>
-    {% endif %}{% endfor %}
+    <div class="sprint-report-preview">{{ report_markdown|markdown|safe }}</div>
     {% else %}
     {% if report.generated_by is none %}
-    <p class="form-status">No draft yet. Ask your AI assistant (Claude Code or Claude Desktop) to “draft the sprint report for {{ sprint.name }}”, then review and edit it here. <a href="/settings#mcp-setup-heading">Connect your assistant</a></p>
+    <p class="form-status">No draft yet. Use Edit report to write one here, or ask your AI assistant to draft it. <a href="/settings#mcp-setup-heading">Connect your assistant</a></p>
     <p class="sprint-meta">The assistant reads <code>get_sprint_report_payload</code> and saves with <code>save_sprint_report</code>.</p>
     {% else %}
     <p class="form-status">Draft · {{ 'AI-generated via MCP' if report.generated_by.value == 'MCP_CLIENT' else 'Written by hand' }}</p>
     {% endif %}
-    <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/report" method="post" class="app-form">
-      <input type="hidden" name="_csrf" value="{{ csrf_token }}">
-      {% for field, label in report_fields %}
-      <label>{{ label }}<textarea name="{{ field }}" rows="4" maxlength="8000">{{ report[field] }}</textarea></label>
-      {% endfor %}
-      <div class="app-form-actions"><button class="app-primary-button" type="submit">Save draft</button></div>
-    </form>
+    <div class="sprint-report-editor" data-report-editor>
+      <div class="sprint-report-toolbar">
+        <button class="app-secondary-button" type="button" data-report-edit>Edit report</button>
+      </div>
+      <div class="sprint-report-preview" data-report-view>{{ report_markdown|markdown|safe }}</div>
+      <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/report" method="post" class="app-form sprint-report-form" data-report-fields hidden>
+        <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        <label for="sprint-report-markdown">Markdown source</label>
+        <textarea id="sprint-report-markdown" name="report_markdown" rows="24" maxlength="{{ report_markdown_max_length }}">{{ report_markdown }}</textarea>
+        <div class="app-form-actions">
+          <button class="app-primary-button" type="submit">Save draft</button>
+          <button class="app-secondary-button" type="button" data-report-cancel>Cancel</button>
+        </div>
+      </form>
+    </div>
     {% if role == 'OWNER' %}
     <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/report/finalize" method="post" class="app-form-actions">
       <input type="hidden" name="_csrf" value="{{ csrf_token }}">
