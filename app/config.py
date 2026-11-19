@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     github_webhook_secret: str | None = None
     github_api_url: str = "https://api.github.com"
     github_web_url: str = "https://github.com"
+    openai_api_key: str | None = None
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str | None = None

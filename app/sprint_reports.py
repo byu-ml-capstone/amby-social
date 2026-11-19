@@ -7,8 +7,8 @@ from sqlmodel import Session, select
 from app.db import begin_write
 from app.errors import Conflict, Invalid, NotFound
 from app.models import (
-    Project,
     REPORT_TEXT_MAX_LENGTH,
+    Project,
     ReportAuthor,
     ReportGenerationStatus,
     Sprint,
@@ -52,6 +52,13 @@ _REPORT_FIELD_DEFAULT_SECTIONS = (
     ("faculty_notes", "Faculty Feedback / Requests"),
 )
 _REPORT_MARKDOWN_HEADINGS = {heading for heading, _ in REPORT_MARKDOWN_SECTIONS}
+_REPORT_MARKDOWN_HEADING_ALIASES = {
+    "Sprint Deliveries and Validation Evidence": "Sprint Deliveries & Validation",
+    "Sprint Deliveries & Validation Evidence": "Sprint Deliveries & Validation",
+    "Key Decisions, Blockers, Risks, or Tradeoffs": "Key Decisions / Blockers / Risks / Tradeoffs",
+    "Key Decisions / Blockers": "Key Decisions / Blockers / Risks / Tradeoffs",
+    "Faculty Feedback or Requests": "Faculty Feedback / Requests",
+}
 
 
 def _split_report_markdown(markdown: str) -> tuple[dict[str, str], str]:
@@ -61,6 +68,7 @@ def _split_report_markdown(markdown: str) -> tuple[dict[str, str], str]:
 
     for line in markdown.splitlines():
         heading = line.strip()[3:].strip() if line.strip().startswith("## ") else None
+        heading = _REPORT_MARKDOWN_HEADING_ALIASES.get(heading, heading)
         if heading in _REPORT_MARKDOWN_HEADINGS:
             current_section = heading
             sections.setdefault(heading, [])
@@ -113,8 +121,22 @@ def parse_report_markdown(markdown: str) -> dict[str, str]:
         for field, headings in _REPORT_FIELD_SECTIONS
     }
     if any(len(value) > REPORT_TEXT_MAX_LENGTH for value in changes.values()):
-        raise Invalid(f"Each saved report field must be {REPORT_TEXT_MAX_LENGTH} characters or fewer.")
+        raise Invalid(
+            f"Each saved report field must be {REPORT_TEXT_MAX_LENGTH} characters or fewer."
+        )
     return changes
+
+
+def validate_generated_report_markdown(markdown: str) -> None:
+    sections, preamble = _split_report_markdown(markdown)
+    headings = [
+        line.strip()[3:].strip() for line in markdown.splitlines() if line.strip().startswith("## ")
+    ]
+    headings = [_REPORT_MARKDOWN_HEADING_ALIASES.get(heading, heading) for heading in headings]
+    expected = [heading for heading, _ in REPORT_MARKDOWN_SECTIONS]
+    if preamble or headings != expected or any(not sections.get(heading) for heading in expected):
+        raise Invalid("Generated report must include content for all six sections.")
+    parse_report_markdown(markdown)
 
 
 def get_report(session: Session, sprint: Sprint) -> SprintReport:
@@ -215,7 +237,7 @@ def save_report(
     author: ReportAuthor = ReportAuthor.HUMAN,
 ) -> SprintReport:
     _lock_unfinalized(session, report)
-    if author is ReportAuthor.MCP_CLIENT:
+    if author in (ReportAuthor.MCP_CLIENT, ReportAuthor.SERVER):
         missing = ungrounded_facts("\n".join(changes.values()), build_payload(session, sprint))
         if missing:
             raise Invalid(

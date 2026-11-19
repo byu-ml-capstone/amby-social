@@ -36,19 +36,31 @@
     <p class="form-status">Finalized {{ report.finalized_at.strftime('%b %-d, %Y') }}</p>
     <div class="sprint-report-preview">{{ report_markdown|markdown|safe }}</div>
     {% else %}
-    {% if report.generated_by is none %}
-    <p class="form-status">No draft yet. Use Edit report to write one here, or ask your AI assistant to draft it. <a href="/settings#mcp-setup-heading">Connect your assistant</a></p>
+    {% if report_message %}
+    <p class="{{ 'form-error' if report_message_is_error else 'form-status' }}"{% if report_message_is_error %} role="alert"{% endif %}>{{ report_message }}</p>
+    {% elif report.generated_by is none %}
+    <p class="form-status">No draft yet. Generate one here, use Edit report, or <a href="/settings#mcp-setup-heading">connect your assistant</a>.</p>
     <p class="sprint-meta">The assistant reads <code>get_sprint_report_payload</code> and saves with <code>save_sprint_report</code>.</p>
     {% else %}
-    <p class="form-status">Draft · {{ 'AI-generated via MCP' if report.generated_by.value == 'MCP_CLIENT' else 'Written by hand' }}</p>
+    <p class="form-status">Draft · {% if report.generated_by.value == 'SERVER' %}AI-generated via OpenAI{% elif report.generated_by.value == 'MCP_CLIENT' %}AI-generated via MCP{% else %}Written by hand{% endif %}</p>
     {% endif %}
     <div class="sprint-report-editor" data-report-editor>
       <div class="sprint-report-toolbar">
-        <button class="app-secondary-button" type="button" data-report-edit>Edit report</button>
+        {% if openai_configured %}
+        <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/report/generate" method="post" onsubmit="return confirm('Generate a new draft in the editor? Unsaved edits will be replaced; the saved report will not change until you save.')">
+          <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+          <button class="app-secondary-button" type="submit">Generate draft with AI</button>
+        </form>
+        <p class="sprint-meta">Sprint data is sent to OpenAI to generate the draft.</p>
+        {% else %}
+        <p class="sprint-meta">Set <code>OPENAI_API_KEY</code> on the server to enable generation.</p>
+        {% endif %}
+        <button class="app-secondary-button" type="button" data-report-edit{% if report_editing %} hidden{% endif %}>Edit report</button>
       </div>
-      <div class="sprint-report-preview" data-report-view>{{ report_markdown|markdown|safe }}</div>
-      <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/report" method="post" class="app-form sprint-report-form" data-report-fields hidden>
+      <div class="sprint-report-preview" data-report-view{% if report_editing %} hidden{% endif %}>{{ report_markdown|markdown|safe }}</div>
+      <form action="/projects/{{ project.slug }}/sprints/{{ sprint.id }}/report" method="post" class="app-form sprint-report-form" data-report-fields{% if not report_editing %} hidden{% endif %}>
         <input type="hidden" name="_csrf" value="{{ csrf_token }}">
+        {% if report_is_generated %}<input type="hidden" name="generated_by" value="SERVER">{% endif %}
         <label for="sprint-report-markdown">Markdown source</label>
         <textarea id="sprint-report-markdown" name="report_markdown" rows="24" maxlength="{{ report_markdown_max_length }}">{{ report_markdown }}</textarea>
         <div class="app-form-actions">
