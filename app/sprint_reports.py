@@ -52,6 +52,14 @@ _REPORT_FIELD_DEFAULT_SECTIONS = (
     ("faculty_notes", "Faculty Feedback / Requests"),
 )
 _REPORT_MARKDOWN_HEADINGS = {heading for heading, _ in REPORT_MARKDOWN_SECTIONS}
+_REPORT_MARKDOWN_HEADING_ALIASES = {
+    "Sprint Deliveries and Validation Evidence": "Sprint Deliveries & Validation",
+    "Sprint Deliveries & Validation Evidence": "Sprint Deliveries & Validation",
+    "Key Decisions, Blockers, Risks, or Tradeoffs":
+        "Key Decisions / Blockers / Risks / Tradeoffs",
+    "Key Decisions / Blockers": "Key Decisions / Blockers / Risks / Tradeoffs",
+    "Faculty Feedback or Requests": "Faculty Feedback / Requests",
+}
 
 
 def _split_report_markdown(markdown: str) -> tuple[dict[str, str], str]:
@@ -61,6 +69,7 @@ def _split_report_markdown(markdown: str) -> tuple[dict[str, str], str]:
 
     for line in markdown.splitlines():
         heading = line.strip()[3:].strip() if line.strip().startswith("## ") else None
+        heading = _REPORT_MARKDOWN_HEADING_ALIASES.get(heading, heading)
         if heading in _REPORT_MARKDOWN_HEADINGS:
             current_section = heading
             sections.setdefault(heading, [])
