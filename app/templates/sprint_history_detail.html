@@ -40,6 +40,7 @@
     <p class="{{ 'form-error' if report_message_is_error else 'form-status' }}"{% if report_message_is_error %} role="alert"{% endif %}>{{ report_message }}</p>
     {% elif report.generated_by is none %}
     <p class="form-status">No draft yet. Generate one here, use Edit report, or <a href="/settings#mcp-setup-heading">connect your assistant</a>.</p>
+    <p class="sprint-meta">The assistant reads <code>get_sprint_report_payload</code> and saves with <code>save_sprint_report</code>.</p>
     {% else %}
     <p class="form-status">Draft · {% if report.generated_by.value == 'SERVER' %}AI-generated via OpenAI{% elif report.generated_by.value == 'MCP_CLIENT' %}AI-generated via MCP{% else %}Written by hand{% endif %}</p>
     {% endif %}
